@@ -10,7 +10,7 @@
   "private": true,
   "devDependencies": {
     "@types/bun": "latest",
-    "@repo/typescript-config": "*"
+    "@repo/typescript-config": "workspace:*"
   },
   "peerDependencies": {
     "typescript": "^5"
