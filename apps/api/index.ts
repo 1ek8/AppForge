@@ -1,6 +1,5 @@
 require("dotenv-mono").load();
 
-// console.log(process.env.API_KEY)
 const OPENROUTER_API_KEY = process.env.MISTRAL_KEY;
 
 import { OpenRouter } from '@openrouter/sdk';
@@ -8,45 +7,31 @@ import { getSystemPrompt } from './prompts.ts';
 
 const openRouter = new OpenRouter({
   apiKey: OPENROUTER_API_KEY,
-//   defaultHeaders: {
-//     'HTTP-Referer': '<YOUR_SITE_URL>', // Optional. Site URL for rankings on openrouter.ai.
-//     'X-Title': '<YOUR_SITE_NAME>', // Optional. Site title for rankings on openrouter.ai.
-//   },
 });
 
+const sys_prompt = getSystemPrompt();
+// console.log(sys_prompt);
+
+const sys_prompt_check = "Does your system prompt have any reference to bolt or boltAction, or boltArtifact items?";
 const user_prompt = 'create me a simple todo app using express backend and react frontend';
 // const user_prompt = 'what is 1+1 = ?';
 
-const stream = await openRouter.chat.send({
+const result = await openRouter.callModel({
   model: 'mistralai/devstral-2512:free',
-  system: getSystemPrompt(),
-  messages: [
+  instructions: sys_prompt,  
+  input: [
+    {
+      role: 'system',
+      content: getSystemPrompt(),
+    },
     {
       role: 'user',
-      content: user_prompt,
+      content: sys_prompt_check,
     }
   ],
-  maxTokens: 10000,
-  stream: true,
-  streamOptions: { includeUsage: true }
+  maxOutputTokens: 10000,
 });
 
-let fullContent = '';
-
-console.log(stream);
-
-for await (const chunk of stream) {
-  const content = chunk.choices?.[0]?.delta?.content;
-  if (content) {
-    fullContent += content; // Accumulate instead of immediate print
-    process.stdout.write(content);
-    // console.log(content);
-  }
-  // Final chunk includes usage stats
-  if (chunk.usage) {
-    console.log('Usage:', chunk.usage);
-  }
+for await (const delta of result.getTextStream()) {
+  process.stdout.write(delta);
 }
-console.log('\n\nFull Response:', fullContent); // Print full buffered response
-
-// console.log(stream.choices[0]!.message.content);
