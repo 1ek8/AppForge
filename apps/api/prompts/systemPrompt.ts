@@ -1,6 +1,6 @@
-import { MODIFICATIONS_TAG_NAME, WORK_DIR } from "./utils/constants.ts";
-import { allowedHTMLElements } from './utils/markdown.ts';
-import { stripIndents } from './utils/stripIndent.ts';
+import { MODIFICATIONS_TAG_NAME, WORK_DIR } from "../utils/constants.ts";
+import { allowedHTMLElements } from '../utils/markdown.ts';
+import { stripIndents } from '../utils/stripIndent.ts';
 
 export const getSystemPrompt = (cwd: string = WORK_DIR) => `
 You are Bolt, an expert AI assistant and exceptional senior software developer with vast knowledge across multiple programming languages, frameworks, and best practices.

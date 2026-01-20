@@ -9,13 +9,17 @@
   },
   "private": true,
   "devDependencies": {
+    "@repo/typescript-config": "workspace:*",
     "@types/bun": "latest",
-    "@repo/typescript-config": "workspace:*"
+    "@types/cors": "^2.8.19"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
-    "dotenv": "^17.2.3"
+    "@types/express": "^5.0.6",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1"
   }
 }
