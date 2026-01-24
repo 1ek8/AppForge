@@ -22,11 +22,98 @@ app.use(cors());
 
 
 app.post("/template", async (req, res) => {
-  const template_prompt = req.body.prompt;
 
+  try {
+    
+    const { prompt } = req.body;
+
+    if(!prompt) {
+      res.status(400).json({
+        error: "Prompt needs to be passed properly as value to the prompt field in JSON"
+      });
+      return;
+    }
+
+    const classification = await classifyTemplate(prompt);
+
+    const templatePrompts = getTemplatePrompts(classification);
+
+    if (classification === PromptTemplate.OTHER) {
+      res.status(400).json({ 
+        error: "Could not classify request. Only Node.js and React apps are supported."
+      });
+      return;
+    }
+
+    res.json({
+      classification,
+      userPrompt: prompt,
+      templateLength: templatePrompts.length,
+      prompts: templatePrompts  // Full prompts for chat endpoint
+    });
+
+  } catch (error) {
+
+    res.status(500).json({ error: "Failed" });
+
+  }
+
+})
+
+app.post('/chat', async(req, res) => {
+
+  try {
+    const { userPrompt, templateLength, prompts } = req.body;
+
+    if (!userPrompt) {
+      res.status(400).json({ error: "Prompt required" });
+      return;
+    }
+
+    if (!prompts || templateLength === 0) {
+      res.status(400).json({ error: "templates array required" });
+      return;
+    }
+    
+    const messages = [
+      { role: 'system' as const, content: getSystemPrompt() },
+      ...prompts.map((p:string) => ({ role: 'system' as const, content: p })),
+      { role: 'user' as const, content: userPrompt }
+    ];
+
+    const result = await openRouter.callModel({
+      model: 'mistralai/devstral-2512:free',
+  
+      input: messages
+
+    });
+
+    for await (const delta of result.getTextStream()) {
+      res.write(delta);
+    }
+
+    res.end();
+
+  } catch (error) {
+      console.error("Chat endpoint error:", error);
+      res.end();
+  }
+
+})
+
+app.listen(3000, () => {
+  console.log("Server runnning on localhost:3000")
+});
+
+enum PromptTemplate {
+  NODE = 'Node',
+  REACT = 'React',
+  OTHER = 'Other'
+}
+
+async function classifyTemplate(prompt: string): Promise<PromptTemplate> {
   const template_result = await openRouter.callModel({
     model: 'mistralai/devstral-2512:free',
-    // instructions: sys_prompt,  
     input: [
       {
         role: 'system',
@@ -34,60 +121,26 @@ app.post("/template", async (req, res) => {
       },
       {
         role: 'user',
-        content: template_prompt,
+        content: prompt,
       }
     ],
     maxOutputTokens: 100
   });
 
   const template_text = await template_result.getText();
+  const classification = template_text.trim() as PromptTemplate;
+  
+  return classification;
+}
 
-  if(template_text === "Node") {
-    res.json({
-      prompts: [nodeFileTree]
-    })
-    return;
-  } 
-  else if (template_text === "React") {
-    res.json({
-      prompts: [
-        uiPrompt,
-        reactFileTree
-      ]
-    })
-    return;
-  } 
-  else {
-    res.status(403).json({message: "This system only supports Node or React apps"});
-    return;
+function getTemplatePrompts(classification: PromptTemplate): string[] {
+  switch (classification) {
+    case PromptTemplate.NODE:
+      return [nodeFileTree];
+    case PromptTemplate.REACT:
+      return [uiPrompt, reactFileTree];
+    case PromptTemplate.OTHER:
+    default:
+      return [];
   }
-
-})
-
-app.post('/chat', async(req, res) => {
-  const sys_prompt = getSystemPrompt();
-  const user_prompt = 'create me a simple todo app using express backend and react frontend';
-
-  const result = await openRouter.callModel({
-    model: 'mistralai/devstral-2512:free',
-    // instructions: sys_prompt,  
-    input: [
-      {
-        role: 'system',
-        content: getSystemPrompt(),
-      },
-      {
-        role: 'user',
-        content: user_prompt,
-      }
-    ],
-    // maxOutputTokens: 10000,
-  });
-
-  for await (const delta of result.getTextStream()) {
-    process.stdout.write(delta);
-  }
-})
-
-
-app.listen(3000);
+}
