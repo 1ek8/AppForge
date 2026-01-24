@@ -88,6 +88,10 @@ app.post('/chat', async(req, res) => {
 
     });
 
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
     for await (const delta of result.getTextStream()) {
       res.write(delta);
     }
@@ -102,7 +106,7 @@ app.post('/chat', async(req, res) => {
 })
 
 app.listen(3000, () => {
-  console.log("Server runnning on localhost:3000")
+  console.log("Server runnning on localhost:3000");
 });
 
 enum PromptTemplate {
