@@ -2,7 +2,7 @@
   // "extends": "@repo/typescript-config/base.json",
   "compilerOptions": {
     // Environment setup & latest features
-    "lib": ["ESNext"],
+    "lib": ["ESNext", "es2016"],
     "target": "ESNext",
     "module": "NodeNext",
     "moduleDetection": "force",

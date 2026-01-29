@@ -3,11 +3,12 @@ require("dotenv-mono").load();
 import express from "express";
 import cors from "cors";
 
-const OPENROUTER_API_KEY = process.env.MISTRAL_KEY;
+const OPENROUTER_API_KEY = process.env.QWEN_KEY;
+const models: string[] = ['mistralai/devstral-2512:free', 'qwen/qwen3-coder:free', 'tngtech/deepseek-r1t2-chimera:free'];
 
 import { OpenRouter } from '@openrouter/sdk';
 import { getSystemPrompt } from './prompts/systemPrompt.ts';
-import { getTemplatePrompt } from "./prompts/templatePrompt.ts";
+import { templatePrompt } from "./prompts/templatePrompt.ts";
 import { reactFileTree } from "./template/react.ts";
 import { uiPrompt } from "./prompts/uiPromot.ts";
 import { nodeFileTree } from "./template/node.ts";
@@ -38,7 +39,7 @@ app.post("/template", async (req, res) => {
 
     const templatePrompts = getTemplatePrompts(classification);
 
-    if (classification === PromptTemplate.OTHER) {
+    if (!Object.values(PromptTemplate).includes(classification as PromptTemplate)) {
       res.status(400).json({ 
         error: "Could not classify request. Only Node.js and React apps are supported."
       });
@@ -82,19 +83,29 @@ app.post('/chat', async(req, res) => {
     ];
 
     const result = await openRouter.callModel({
-      model: 'mistralai/devstral-2512:free',
+      models: models,
   
       input: messages
 
     });
+
+    const selectedModel = result.getToolCalls;
+    console.log(`Selected Model : ${selectedModel}`);
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
     for await (const delta of result.getTextStream()) {
+      // console.log(delta)
+      process.stdout.write(delta);
       res.write(delta);
     }
+    // for await (const delta of result.getTextStream()) {
+    //   res.write(`data: ${JSON.stringify({ content: delta })}\n\n`);
+    // }
+    
+    // res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
 
     res.end();
 
@@ -116,12 +127,13 @@ enum PromptTemplate {
 }
 
 async function classifyTemplate(prompt: string): Promise<PromptTemplate> {
-  const template_result = await openRouter.callModel({
-    model: 'mistralai/devstral-2512:free',
+  try {
+    const template_result = await openRouter.callModel({
+    models: models,
     input: [
       {
         role: 'system',
-        content: getTemplatePrompt,
+        content: templatePrompt,
       },
       {
         role: 'user',
@@ -132,12 +144,24 @@ async function classifyTemplate(prompt: string): Promise<PromptTemplate> {
   });
 
   const template_text = await template_result.getText();
-  const classification = template_text.trim() as PromptTemplate;
-  
-  return classification;
+  console.log(template_text);
+  const classification = template_text.trim().toLowerCase();
+
+  if (classification.includes('node')) {
+    return PromptTemplate.NODE;
+  } else if (classification.includes('react')) {
+    return PromptTemplate.REACT;
+  } else {
+    return PromptTemplate.OTHER;
+  }
+  } catch (error) {
+    console.error("Classification error:", error);
+    return PromptTemplate.OTHER;
+  }
 }
 
 function getTemplatePrompts(classification: PromptTemplate): string[] {
+  console.log(classification);
   switch (classification) {
     case PromptTemplate.NODE:
       return [nodeFileTree];
