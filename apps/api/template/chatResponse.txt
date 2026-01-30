@@ -1,0 +1,547 @@
+I'll create a beautiful, fully-featured todo application in React with a production-worthy design using Tailwind CSS and Lucide React icons.
+
+<boltArtifact id="todo-app" title="Todo Application in React">
+<boltAction type="file" filePath="src/App.tsx">
+import React, { useState, useEffect } from 'react';
+import { 
+  Plus, 
+  Check, 
+  Trash2, 
+  Edit2, 
+  X, 
+  Filter, 
+  Calendar, 
+  Clock,
+  ChevronDown,
+  ChevronUp,
+  Sun,
+  Moon,
+  ListChecks,
+  Star
+} from 'lucide-react';
+
+interface Todo {
+  id: string;
+  title: string;
+  description?: string;
+  completed: boolean;
+  createdAt: Date;
+  dueDate?: Date;
+  priority: 'low' | 'medium' | 'high';
+  tags: string[];
+}
+
+type FilterType = 'all' | 'active' | 'completed' | 'high-priority';
+type SortType = 'date' | 'priority' | 'title';
+
+function App() {
+  const [todos, setTodos] = useState<Todo[]>([
+    {
+      id: '1',
+      title: 'Complete project proposal',
+      description: 'Finish writing the project proposal document and send to team',
+      completed: false,
+      createdAt: new Date(Date.now() - 86400000),
+      dueDate: new Date(Date.now() + 86400000),
+      priority: 'high',
+      tags: ['work', 'urgent']
+    },
+    {
+      id: '2',
+      title: 'Buy groceries',
+      description: 'Milk, eggs, bread, fruits, and vegetables',
+      completed: true,
+      createdAt: new Date(Date.now() - 172800000),
+      dueDate: new Date(Date.now() + 172800000),
+      priority: 'medium',
+      tags: ['personal', 'shopping']
+    },
+    {
+      id: '3',
+      title: 'Schedule dentist appointment',
+      description: 'Call clinic to book annual checkup',
+      completed: false,
+      createdAt: new Date(Date.now() - 43200000),
+      priority: 'low',
+      tags: ['health']
+    },
+    {
+      id: '4',
+      title: 'Read new book',
+      description: 'Start reading "The Design of Everyday Things"',
+      completed: false,
+      createdAt: new Date(Date.now() - 21600000),
+      dueDate: new Date(Date.now() + 259200000),
+      priority: 'medium',
+      tags: ['personal', 'learning']
+    },
+  ]);
+
+  const [newTodo, setNewTodo] = useState({ title: '', description: '', priority: 'medium' as 'low' | 'medium' | 'high' });
+  const [filter, setFilter] = useState<FilterType>('all');
+  const [sort, setSort] = useState<SortType>('date');
+  const [darkMode, setDarkMode] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [showCompleted, setShowCompleted] = useState(true);
+  const [stats, setStats] = useState({ total: 0, completed: 0, pending: 0 });
+
+  useEffect(() => {
+    const total = todos.length;
+    const completed = todos.filter(todo => todo.completed).length;
+    const pending = total - completed;
+    setStats({ total, completed, pending });
+  }, [todos]);
+
+  const addTodo = () => {
+    if (!newTodo.title.trim()) return;
+
+    const todo: Todo = {
+      id: Date.now().toString(),
+      title: newTodo.title,
+      description: newTodo.description,
+      completed: false,
+      createdAt: new Date(),
+      priority: newTodo.priority,
+      tags: []
+    };
+
+    setTodos([todo, ...todos]);
+    setNewTodo({ title: '', description: '', priority: 'medium' });
+  };
+
+  const toggleTodo = (id: string) => {
+    setTodos(todos.map(todo => 
+      todo.id === id ? { ...todo, completed: !todo.completed } : todo
+    ));
+  };
+
+  const deleteTodo = (id: string) => {
+    setTodos(todos.filter(todo => todo.id !== id));
+  };
+
+  const startEdit = (todo: Todo) => {
+    setEditingId(todo.id);
+    setEditTitle(todo.title);
+    setEditDescription(todo.description || '');
+  };
+
+  const saveEdit = () => {
+    if (!editTitle.trim()) return;
+
+    setTodos(todos.map(todo =>
+      todo.id === editingId 
+        ? { ...todo, title: editTitle, description: editDescription }
+        : todo
+    ));
+    setEditingId(null);
+    setEditTitle('');
+    setEditDescription('');
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditTitle('');
+    setEditDescription('');
+  };
+
+  const filteredTodos = todos.filter(todo => {
+    if (filter === 'active') return !todo.completed;
+    if (filter === 'completed') return todo.completed;
+    if (filter === 'high-priority') return todo.priority === 'high';
+    return true;
+  });
+
+  const sortedTodos = [...filteredTodos].sort((a, b) => {
+    if (sort === 'date') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    if (sort === 'priority') {
+      const priorityOrder = { high: 3, medium: 2, low: 1 };
+      return priorityOrder[b.priority] - priorityOrder[a.priority];
+    }
+    return a.title.localeCompare(b.title);
+  });
+
+  const getPriorityColor = (priority: 'low' | 'medium' | 'high') => {
+    switch (priority) {
+      case 'high': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+      case 'medium': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+      case 'low': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+    }
+  };
+
+  const getPriorityIcon = (priority: 'low' | 'medium' | 'high') => {
+    switch (priority) {
+      case 'high': return <Star className="w-4 h-4" />;
+      case 'medium': return <Star className="w-4 h-4" />;
+      case 'low': return <Star className="w-4 h-4" />;
+    }
+  };
+
+  return (
+    <div className={`min-h-screen transition-colors duration-200 ${darkMode ? 'dark bg-gray-900' : 'bg-gradient-to-br from-blue-50 to-purple-50'}`}>
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        {/* Header */}
+        <header className="mb-8">
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex items-center gap-3">
+              <div className={`p-3 rounded-xl ${darkMode ? 'bg-blue-900 text-blue-200' : 'bg-blue-100 text-blue-600'}`}>
+                <ListChecks className="w-8 h-8" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold dark:text-white">TodoFlow</h1>
+                <p className="text-gray-600 dark:text-gray-300">Organize your tasks effortlessly</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setDarkMode(!darkMode)}
+              className={`p-3 rounded-full transition-all duration-200 ${darkMode ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200' : 'bg-gray-800 text-yellow-300 hover:bg-gray-700'}`}
+            >
+              {darkMode ? <Sun className="w-6 h-6" /> : <Moon className="w-6 h-6" />}
+            </button>
+          </div>
+
+          {/* Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Total Tasks</p>
+                  <p className="text-2xl font-bold dark:text-white">{stats.total}</p>
+                </div>
+                <div className={`p-2 rounded-lg ${darkMode ? 'bg-blue-900' : 'bg-blue-100'}`}>
+                  <ListChecks className="w-6 h-6 text-blue-600 dark:text-blue-300" />
+                </div>
+              </div>
+            </div>
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Completed</p>
+                  <p className="text-2xl font-bold text-green-600 dark:text-green-400">{stats.completed}</p>
+                </div>
+                <div className={`p-2 rounded-lg ${darkMode ? 'bg-green-900' : 'bg-green-100'}`}>
+                  <Check className="w-6 h-6 text-green-600 dark:text-green-300" />
+                </div>
+              </div>
+            </div>
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Pending</p>
+                  <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">{stats.pending}</p>
+                </div>
+                <div className={`p-2 rounded-lg ${darkMode ? 'bg-orange-900' : 'bg-orange-100'}`}>
+                  <Clock className="w-6 h-6 text-orange-600 dark:text-orange-300" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <main>
+          {/* Add Todo Form */}
+          <div className={`p-6 rounded-2xl shadow-lg mb-8 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+            <h2 className="text-xl font-semibold mb-4 dark:text-white">Add New Task</h2>
+            <div className="space-y-4">
+              <div className="flex gap-4">
+                <input
+                  type="text"
+                  value={newTodo.title}
+                  onChange={(e) => setNewTodo({ ...newTodo, title: e.target.value })}
+                  placeholder="What needs to be done?"
+                  className={`flex-1 p-4 rounded-xl border ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-200'} focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200`}
+                  onKeyPress={(e) => e.key === 'Enter' && addTodo()}
+                />
+                <button
+                  onClick={addTodo}
+                  className="px-6 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-200 flex items-center gap-2 font-medium shadow-lg hover:shadow-xl"
+                >
+                  <Plus className="w-5 h-5" />
+                  Add
+                </button>
+              </div>
+              
+              <div className="flex gap-4">
+                <textarea
+                  value={newTodo.description}
+                  onChange={(e) => setNewTodo({ ...newTodo, description: e.target.value })}
+                  placeholder="Add description (optional)"
+                  className={`flex-1 p-4 rounded-xl border ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-200'} focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 min-h-[100px]`}
+                />
+                <div className="flex flex-col gap-2">
+                  <span className="text-sm font-medium dark:text-gray-300">Priority</span>
+                  <select
+                    value={newTodo.priority}
+                    onChange={(e) => setNewTodo({ ...newTodo, priority: e.target.value as 'low' | 'medium' | 'high' })}
+                    className={`p-3 rounded-xl border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-200'} focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+                  >
+                    <option value="low">Low Priority</option>
+                    <option value="medium">Medium Priority</option>
+                    <option value="high">High Priority</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Filters and Controls */}
+          <div className={`p-4 rounded-xl shadow-lg mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Filter className="w-5 h-5 text-gray-500" />
+                <span className="font-medium dark:text-gray-300">Filter:</span>
+                <div className="flex gap-2 flex-wrap">
+                  {(['all', 'active', 'completed', 'high-priority'] as FilterType[]).map((filterType) => (
+                    <button
+                      key={filterType}
+                      onClick={() => setFilter(filterType)}
+                      className={`px-4 py-2 rounded-lg transition-all duration-200 ${filter === filterType 
+                        ? darkMode 
+                          ? 'bg-blue-600 text-white' 
+                          : 'bg-blue-600 text-white'
+                        : darkMode
+                          ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      {filterType.replace('-', ' ')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <span className="font-medium dark:text-gray-300">Sort by:</span>
+                <select
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value as SortType)}
+                  className={`px-4 py-2 rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-200'} focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+                >
+                  <option value="date">Date Added</option>
+                  <option value="priority">Priority</option>
+                  <option value="title">Title</option>
+                </select>
+              </div>
+
+              <button
+                onClick={() => setShowCompleted(!showCompleted)}
+                className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-all duration-200 ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              >
+                {showCompleted ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                {showCompleted ? 'Hide Completed' : 'Show Completed'}
+              </button>
+            </div>
+          </div>
+
+          {/* Todo List */}
+          <div className="space-y-4">
+            {sortedTodos
+              .filter(todo => showCompleted || !todo.completed)
+              .map(todo => (
+                <div
+                  key={todo.id}
+                  className={`p-6 rounded-2xl shadow-lg transition-all duration-200 hover:shadow-xl ${darkMode 
+                    ? todo.completed 
+                      ? 'bg-gray-700 border-l-4 border-green-500' 
+                      : 'bg-gray-800 border-l-4 border-blue-500'
+                    : todo.completed
+                      ? 'bg-gray-50 border-l-4 border-green-500'
+                      : 'bg-white border-l-4 border-blue-500'
+                  }`}
+                >
+                  {editingId === todo.id ? (
+                    <div className="space-y-4">
+                      <input
+                        type="text"
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        className={`w-full p-3 rounded-xl border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-200'} focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+                      />
+                      <textarea
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        className={`w-full p-3 rounded-xl border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-200'} focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[100px]`}
+                      />
+                      <div className="flex gap-2 justify-end">
+                        <button
+                          onClick={saveEdit}
+                          className="px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-all duration-200 flex items-center gap-2"
+                        >
+                          <Check className="w-4 h-4" />
+                          Save
+                        </button>
+                        <button
+                          onClick={cancelEdit}
+                          className="px-4 py-2 bg-gray-600 text-white rounded-xl hover:bg-gray-700 transition-all duration-200 flex items-center gap-2"
+                        >
+                          <X className="w-4 h-4" />
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-3">
+                          <button
+                            onClick={() => toggleTodo(todo.id)}
+                            className={`mt-1 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-200 ${todo.completed
+                              ? 'bg-green-500 border-green-500'
+                              : darkMode
+                                ? 'border-gray-500 hover:border-green-500'
+                                : 'border-gray-300 hover:border-green-500'
+                            }`}
+                          >
+                            {todo.completed && <Check className="w-4 h-4 text-white" />}
+                          </button>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <h3 className={`text-lg font-semibold ${todo.completed ? 'line-through text-gray-500' : 'dark:text-white'}`}>
+                                {todo.title}
+                              </h3>
+                              <span className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${getPriorityColor(todo.priority)}`}>
+                                {getPriorityIcon(todo.priority)}
+                                {todo.priority}
+                              </span>
+                            </div>
+                            {todo.description && (
+                              <p className={`mb-3 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                {todo.description}
+                              </p>
+                            )}
+                            <div className="flex items-center gap-4 flex-wrap">
+                              <div className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400">
+                                <Calendar className="w-4 h-4" />
+                                <span>{new Date(todo.createdAt).toLocaleDateString()}</span>
+                              </div>
+                              {todo.dueDate && (
+                                <div className="flex items-center gap-1 text-sm text-orange-600 dark:text-orange-400">
+                                  <Clock className="w-4 h-4" />
+                                  <span>Due: {new Date(todo.dueDate).toLocaleDateString()}</span>
+                                </div>
+                              )}
+                              {todo.tags.length > 0 && (
+                                <div className="flex gap-2">
+                                  {todo.tags.map((tag, index) => (
+                                    <span
+                                      key={index}
+                                      className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs rounded"
+                                    >
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => startEdit(todo)}
+                            className="p-2 rounded-xl bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800 transition-all duration-200"
+                            title="Edit"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => deleteTodo(todo.id)}
+                            className="p-2 rounded-xl bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800 transition-all duration-200"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+
+            {sortedTodos.length === 0 && (
+              <div className={`p-12 rounded-2xl shadow-lg text-center ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                <div className="max-w-md mx-auto">
+                  <div className={`p-6 rounded-full w-20 h-20 mx-auto mb-4 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                    <Check className="w-10 h-10 text-green-500 mx-auto" />
+                  </div>
+                  <h3 className="text-xl font-semibold mb-2 dark:text-white">No tasks found</h3>
+                  <p className={`mb-6 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    {filter === 'completed' 
+                      ? "You haven't completed any tasks yet."
+                      : filter === 'active'
+                      ? "All tasks are completed! Great job!"
+                      : "Start by adding your first task above."}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Footer Stats */}
+          <div className={`mt-8 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg`}>
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Showing {sortedTodos.filter(todo => showCompleted || !todo.completed).length} of {todos.length} tasks
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-gray-500 dark:text-gray-400">Completion Rate</p>
+                <p className="text-xl font-bold dark:text-white">
+                  {todos.length > 0 ? Math.round((stats.completed / todos.length) * 100) : 0}%
+                </p>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+export default App;
+</boltAction>
+
+<boltAction type="file" filePath="src/index.css">
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply antialiased;
+  }
+}
+
+@layer components {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: rgba(156, 163, 175, 0.5);
+    border-radius: 3px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(156, 163, 175, 0.8);
+  }
+}
+</boltAction>
+
+<boltAction type="shell">
+npm run dev
+</boltAction>
+</boltArtifact>
+
+The todo application is now running! You have a beautiful, fully-featured todo app called TodoFlow with dark/light mode, filtering, sorting, priority levels, statistics, and smooth animations. The app is production-ready with a polished UI and comprehensive functionality.
