@@ -4,13 +4,13 @@ import express from "express";
 import cors from "cors";
 
 const OPENROUTER_API_KEY = process.env.QWEN_KEY;
-const models: string[] = ['mistralai/devstral-2512:free', 'qwen/qwen3-coder:free', 'tngtech/deepseek-r1t2-chimera:free'];
+const models: string[] = ['mistralai/devstral-2512:free', 'mistralai/devstral-2512', 'deepseek/deepseek-v3.2'];
 
 import { OpenRouter } from '@openrouter/sdk';
 import { getSystemPrompt } from './prompts/systemPrompt.ts';
 import { templatePrompt } from "./prompts/templatePrompt.ts";
 import { reactFileTree } from "./template/react.ts";
-import { uiPrompt } from "./prompts/uiPromot.ts";
+import { uiPrompt } from "./prompts/uiPrompt.ts";
 import { nodeFileTree } from "./template/node.ts";
 
 const openRouter = new OpenRouter({
@@ -97,15 +97,9 @@ app.post('/chat', async(req, res) => {
     res.setHeader('Connection', 'keep-alive');
 
     for await (const delta of result.getTextStream()) {
-      // console.log(delta)
       process.stdout.write(delta);
       res.write(delta);
     }
-    // for await (const delta of result.getTextStream()) {
-    //   res.write(`data: ${JSON.stringify({ content: delta })}\n\n`);
-    // }
-    
-    // res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
 
     res.end();
 
@@ -144,14 +138,22 @@ async function classifyTemplate(prompt: string): Promise<PromptTemplate> {
   });
 
   const template_text = await template_result.getText();
-  console.log(template_text);
+  console.log('Raw template repsonse: ', template_text);
+
+  if (!template_text || template_text.trim() === '') {
+    console.error('Empty response from LLM - likely rate limited or model unavailable');
+    return PromptTemplate.OTHER;
+  }
+
   const classification = template_text.trim().toLowerCase();
+  console.log('Normalized classification: ', classification);
 
   if (classification.includes('node')) {
     return PromptTemplate.NODE;
   } else if (classification.includes('react')) {
     return PromptTemplate.REACT;
   } else {
+    console.log('Classification failed, returning OTHER');
     return PromptTemplate.OTHER;
   }
   } catch (error) {

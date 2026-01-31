@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft, Code2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import StepsPane from "@/components/builder/StepsPane";
 import FileExplorer from "@/components/builder/FileExplorer";
 import PreviewPane from "@/components/builder/PreviewPane";
+import axios from 'axios';
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
 const Builder = () => {
   const location = useLocation();
@@ -12,6 +15,30 @@ const Builder = () => {
   const prompt = location.state?.prompt || "No prompt provided";
 
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+          const templateResponse = await axios.post(`${BACKEND_URL}/template`, {
+            prompt
+          });
+
+          const { classification, userPrompt, templateLength, prompts } = templateResponse.data;
+
+          const codeResponse = await axios.post(`${BACKEND_URL}/chat`, {
+            classification,
+            userPrompt,
+            templateLength,
+            prompts
+          });
+
+          
+
+      } catch (error) {
+        console.log(`Failed to fetch template for prompt: ${prompt}, got the following error\n${error}`);
+      }
+    }
+  }, [])
 
   return (
     <div className="h-screen flex flex-col bg-background">
