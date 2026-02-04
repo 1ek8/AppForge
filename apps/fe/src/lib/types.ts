@@ -29,3 +29,12 @@ export interface FileNode {
   content?: string;
   children?: FileNode[];
 }
+
+//temporary interface
+export interface FileNodeMap {
+    name: string;
+    type: 'file' | 'folder';
+    path: string;
+    content?: string;
+    children?: { [key: string]: FileNodeMap }; // Key change: Object instead of Array
+}
