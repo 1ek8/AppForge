@@ -21,3 +21,11 @@ export interface Step {
   content?: string;
   command?: string;
 }
+
+export interface FileNode {
+  name: string;
+  type: 'file' | 'folder';
+  path: string;
+  content?: string;
+  children?: FileNode[];
+}
