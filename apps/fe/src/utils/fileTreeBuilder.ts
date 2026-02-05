@@ -1,5 +1,14 @@
 import { FileNode, FileNodeMap } from "@/lib/types";
 
+// const example = [{
+//     filePath: "src/index.ts", 
+//     content: "index"
+// }, 
+// {
+//     filePath: "src/components/Button.tsx", 
+//     content: "button"
+// }]
+
 export function buildFileTree(files: {filePath: string, content: string}[]): FileNode[] {
     const root: { [key: string]: FileNodeMap} = {};
 
@@ -37,3 +46,17 @@ export function buildFileTree(files: {filePath: string, content: string}[]): Fil
 
     return objectToArray(root);
 }
+
+// function run(){
+//     const fileTree = buildFileTree(example);
+//     console.log(JSON.stringify(fileTree, null, 2));
+
+//     if (fileTree.length > 0) {
+//         console.log("--- Build Successful ---");
+//         console.log(`Root items found: ${fileTree.map(n => n.name).join(', ')}`);
+//     } else {
+//         console.warn("--- Build returned an empty tree ---");
+//     }
+// }
+
+// run();

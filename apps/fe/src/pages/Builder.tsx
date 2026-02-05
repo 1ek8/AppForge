@@ -6,6 +6,8 @@ import StepsPane from "@/components/builder/StepsPane";
 import FileExplorer from "@/components/builder/FileExplorer";
 import PreviewPane from "@/components/builder/PreviewPane";
 import axios from 'axios';
+import { FileNode, ParsedFile, Step } from "@/lib/types";
+import { StreamParser } from "@/utils/streamParser";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
@@ -15,24 +17,39 @@ const Builder = () => {
   const prompt = location.state?.prompt || "No prompt provided";
 
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [steps, setSteps] = useState<Step[]>([]);
+  const [files, setFiles] = useState<ParsedFile[]>([]);
+  const [fileTree, setFileTree] = useState<FileNode[]>([]);
+  const [fileContents, setFileContents] = useState<Map<string, string>>(new Map());
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const init = async () => {
+      const parser = new StreamParser();
       try {
-          const templateResponse = await axios.post(`${BACKEND_URL}/template`, {
-            prompt
-          });
 
-          const { classification, userPrompt, templateLength, prompts } = templateResponse.data;
+        // setIsLoading(true);
 
-          const codeResponse = await axios.post(`${BACKEND_URL}/chat`, {
-            classification,
-            userPrompt,
-            templateLength,
-            prompts
-          });
+        const templateResponse = await axios.post(`${BACKEND_URL}/template`, {
+          prompt
+        });
 
-          
+        const { classification, userPrompt, templateLength, prompts } = templateResponse.data;
+
+        const codeResponse = await axios.post(`${BACKEND_URL}/chat`, {
+          classification,
+          userPrompt,
+          templateLength,
+          prompts
+        });
+
+        if(codeResponse.status != 200){
+          throw new Error('Failed to fetch chat response');
+        }
+
+        const reader = codeResponse.body?.getReader();
+        const decoder = new TextDecoder();
 
       } catch (error) {
         console.log(`Failed to fetch template for prompt: ${prompt}, got the following error\n${error}`);
