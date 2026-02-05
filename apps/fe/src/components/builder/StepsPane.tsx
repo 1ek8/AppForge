@@ -9,6 +9,9 @@ interface Step {
 
 interface StepsPaneProps {
   prompt: string;
+  isLoading: boolean;
+  steps: Step[];
+  error: any
 }
 
 const StepsPane = ({ prompt }: StepsPaneProps) => {

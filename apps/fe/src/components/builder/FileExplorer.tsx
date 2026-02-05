@@ -18,6 +18,7 @@ interface FileNode {
 }
 
 interface FileExplorerProps {
+  fileTree: FileNode[]
   selectedFile: string | null;
   onSelectFile: (path: string) => void;
 }

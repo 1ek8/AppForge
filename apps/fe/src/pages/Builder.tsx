@@ -8,6 +8,7 @@ import PreviewPane from "@/components/builder/PreviewPane";
 import axios from 'axios';
 import { FileNode, ParsedFile, Step } from "@/lib/types";
 import { StreamParser } from "@/utils/streamParser";
+import { buildFileTree } from "@/utils/fileTreeBuilder";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
@@ -37,25 +38,79 @@ const Builder = () => {
 
         const { classification, userPrompt, templateLength, prompts } = templateResponse.data;
 
-        const codeResponse = await axios.post(`${BACKEND_URL}/chat`, {
-          classification,
-          userPrompt,
-          templateLength,
-          prompts
+        const codeResponse = await fetch(`${BACKEND_URL}/chat`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'applixation/json'
+          },
+          body: JSON.stringify({
+            classification,
+            userPrompt,
+            templateLength,
+            prompts
+          })
         });
 
-        if(codeResponse.status != 200){
+        if(!codeResponse.ok){
           throw new Error('Failed to fetch chat response');
         }
 
         const reader = codeResponse.body?.getReader();
         const decoder = new TextDecoder();
 
+        if(!reader) {
+          throw new Error('No reader available');
+        }
+
+        while(true){
+          const {done, value} = await reader.read();
+
+          if(done) {
+            setIsLoading(false);
+            break;
+          }
+
+          const chunk = decoder.decode(value, { stream: true });
+
+          const { 
+            steps,
+            files,
+            isComplete
+          } = parser.parseChunk(chunk);
+          
+          setSteps(steps);
+          setFiles(files);
+  
+          const tree = buildFileTree(files.map((f) => ({
+            filePath: f.filePath,
+            content: f.content
+          })));
+  
+          setFileTree(tree);
+  
+          const contentMap = new Map<string, string>();
+          files.map((f) => {
+            contentMap.set(f.filePath, f.content);
+          });
+          setFileContents(contentMap);
+  
+          if(isComplete) {
+            setIsLoading(false);
+            break;
+          }
+        }
+
       } catch (error) {
         console.log(`Failed to fetch template for prompt: ${prompt}, got the following error\n${error}`);
+        setError(error instanceof Error ? error.message : 'Uknown error');
+        setIsLoading(false);
       }
-    }
-  }, [])
+    };
+
+    init();
+  }, [prompt]);
+
+  const selectedFileContent = selectedFile ? fileContents.get(selectedFile) : null;
 
   return (
     <div className="h-screen flex flex-col bg-background">
@@ -87,12 +142,13 @@ const Builder = () => {
       <div className="flex-1 flex overflow-hidden">
         {/* Steps Pane - 30% */}
         <div className="w-[30%] border-r border-border overflow-hidden flex flex-col">
-          <StepsPane prompt={prompt} />
+          <StepsPane prompt={prompt} steps={steps} isLoading={isLoading} error={error} />
         </div>
 
         {/* File Explorer - 25% */}
         <div className="w-[25%] border-r border-border overflow-hidden flex flex-col">
           <FileExplorer
+            fileTree={fileTree}
             selectedFile={selectedFile}
             onSelectFile={setSelectedFile}
           />
@@ -100,7 +156,10 @@ const Builder = () => {
 
         {/* Preview/Code Pane - 45% */}
         <div className="w-[45%] overflow-hidden flex flex-col">
-          <PreviewPane selectedFile={selectedFile} />
+          <PreviewPane 
+            selectedFile={selectedFile} 
+            fileContent={selectedFileContent}
+          />
         </div>
       </div>
     </div>

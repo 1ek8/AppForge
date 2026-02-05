@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import Editor from "@monaco-editor/react";
 
 interface PreviewPaneProps {
+  fileContent: string;
   selectedFile: string | null;
 }
 
