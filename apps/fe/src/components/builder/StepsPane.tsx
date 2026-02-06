@@ -1,53 +1,55 @@
-import { Check, Circle, Loader2 } from "lucide-react";
+import { Step } from "@/lib/types";
+import { Check, Circle, FileCode, Loader2, Terminal } from "lucide-react";
 
-interface Step {
-  id: number;
-  title: string;
-  description: string;
-  status: "pending" | "in-progress" | "completed";
-}
+// interface Step {
+//   id: number;
+//   title: string;
+//   description: string;
+//   status: "pending" | "in-progress" | "completed";
+//   type: 'file | shell';
+// }
 
 interface StepsPaneProps {
-  prompt: string;
+  // prompt: string;
   isLoading: boolean;
   steps: Step[];
   error: any
 }
 
-const StepsPane = ({ prompt }: StepsPaneProps) => {
+const StepsPane = ({ isLoading, steps, error }: StepsPaneProps) => {
   // Mock steps for demonstration
-  const steps: Step[] = [
-    {
-      id: 1,
-      title: "Analyzing prompt",
-      description: "Understanding your requirements",
-      status: "completed",
-    },
-    {
-      id: 2,
-      title: "Creating project structure",
-      description: "Setting up files and folders",
-      status: "completed",
-    },
-    {
-      id: 3,
-      title: "Generating components",
-      description: "Building React components",
-      status: "in-progress",
-    },
-    {
-      id: 4,
-      title: "Styling with Tailwind",
-      description: "Applying responsive styles",
-      status: "pending",
-    },
-    {
-      id: 5,
-      title: "Adding interactivity",
-      description: "Implementing user interactions",
-      status: "pending",
-    },
-  ];
+  // const steps: Step[] = [
+  //   {
+  //     id: 1,
+  //     title: "Analyzing prompt",
+  //     description: "Understanding your requirements",
+  //     status: "completed",
+  //   },
+  //   {
+  //     id: 2,
+  //     title: "Creating project structure",
+  //     description: "Setting up files and folders",
+  //     status: "completed",
+  //   },
+  //   {
+  //     id: 3,
+  //     title: "Generating components",
+  //     description: "Building React components",
+  //     status: "in-progress",
+  //   },
+  //   {
+  //     id: 4,
+  //     title: "Styling with Tailwind",
+  //     description: "Applying responsive styles",
+  //     status: "pending",
+  //   },
+  //   {
+  //     id: 5,
+  //     title: "Adding interactivity",
+  //     description: "Implementing user interactions",
+  //     status: "pending",
+  //   },
+  // ];
 
   return (
     <div className="h-full flex flex-col">
@@ -61,6 +63,22 @@ const StepsPane = ({ prompt }: StepsPaneProps) => {
 
       {/* Steps List */}
       <div className="flex-1 overflow-y-auto p-4">
+        {error && (
+          <div className="bg-destructive/10 text-destructive px-4 py-3 rounded-lg mb-4">
+            <p className="font-medium">Error</p>
+            <p className="text-sm">{error}</p>
+          </div>
+        )}
+        {steps.length === 0 && isLoading && (
+          <div className="flex items-center justify-center h-32">
+            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground"/>
+          </div>
+        )}
+        {steps.length === 0 && !isLoading && !error && (
+          <div className="text-center text-muted-foreground py-8">
+            No steps generated yet
+          </div>
+        )}
         <div className="space-y-1">
           {steps.map((step, index) => (
             <StepItem
@@ -121,6 +139,13 @@ const StepItem = ({ step, isLast }: StepItemProps) => {
         );
     }
   };
+
+  const getTypeIcon = () => {
+    if(step.type === 'file') {
+      return <FileCode className="w-3.5 h-3.5 text-muted-foreground" />;
+    }
+    return <Terminal className="w-3.5 h-3.5 text-muted-foreground" />;
+  }
 
   return (
     <div className="flex gap-3">
