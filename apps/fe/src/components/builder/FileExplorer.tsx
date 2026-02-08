@@ -10,12 +10,13 @@ import {
   File,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FileNode } from "@/lib/types";
 
-interface FileNode {
-  name: string;
-  type: "file" | "folder";
-  children?: FileNode[];
-}
+// interface FileNode {
+//   name: string;
+//   type: "file" | "folder";
+//   children?: FileNode[];
+// }
 
 interface FileExplorerProps {
   fileTree: FileNode[]
@@ -23,47 +24,47 @@ interface FileExplorerProps {
   onSelectFile: (path: string) => void;
 }
 
-const FileExplorer = ({ selectedFile, onSelectFile }: FileExplorerProps) => {
+const FileExplorer = ({ fileTree, selectedFile, onSelectFile }: FileExplorerProps) => {
   // Mock file structure
-  const fileTree: FileNode[] = [
-    {
-      name: "src",
-      type: "folder",
-      children: [
-        {
-          name: "components",
-          type: "folder",
-          children: [
-            { name: "Header.tsx", type: "file" },
-            { name: "Hero.tsx", type: "file" },
-            { name: "Footer.tsx", type: "file" },
-          ],
-        },
-        {
-          name: "pages",
-          type: "folder",
-          children: [
-            { name: "Home.tsx", type: "file" },
-            { name: "About.tsx", type: "file" },
-          ],
-        },
-        { name: "App.tsx", type: "file" },
-        { name: "index.css", type: "file" },
-        { name: "main.tsx", type: "file" },
-      ],
-    },
-    {
-      name: "public",
-      type: "folder",
-      children: [
-        { name: "favicon.ico", type: "file" },
-        { name: "robots.txt", type: "file" },
-      ],
-    },
-    { name: "package.json", type: "file" },
-    { name: "tailwind.config.ts", type: "file" },
-    { name: "index.html", type: "file" },
-  ];
+  // const fileTree: FileNode[] = [
+  //   {
+  //     name: "src",
+  //     type: "folder",
+  //     children: [
+  //       {
+  //         name: "components",
+  //         type: "folder",
+  //         children: [
+  //           { name: "Header.tsx", type: "file" },
+  //           { name: "Hero.tsx", type: "file" },
+  //           { name: "Footer.tsx", type: "file" },
+  //         ],
+  //       },
+  //       {
+  //         name: "pages",
+  //         type: "folder",
+  //         children: [
+  //           { name: "Home.tsx", type: "file" },
+  //           { name: "About.tsx", type: "file" },
+  //         ],
+  //       },
+  //       { name: "App.tsx", type: "file" },
+  //       { name: "index.css", type: "file" },
+  //       { name: "main.tsx", type: "file" },
+  //     ],
+  //   },
+  //   {
+  //     name: "public",
+  //     type: "folder",
+  //     children: [
+  //       { name: "favicon.ico", type: "file" },
+  //       { name: "robots.txt", type: "file" },
+  //     ],
+  //   },
+  //   { name: "package.json", type: "file" },
+  //   { name: "tailwind.config.ts", type: "file" },
+  //   { name: "index.html", type: "file" },
+  // ];
 
   return (
     <div className="h-full flex flex-col">
@@ -81,7 +82,7 @@ const FileExplorer = ({ selectedFile, onSelectFile }: FileExplorerProps) => {
           <FileTreeNode
             key={node.name}
             node={node}
-            path={node.name}
+            // path={node.name}
             depth={0}
             selectedFile={selectedFile}
             onSelectFile={onSelectFile}
@@ -94,7 +95,7 @@ const FileExplorer = ({ selectedFile, onSelectFile }: FileExplorerProps) => {
 
 interface FileTreeNodeProps {
   node: FileNode;
-  path: string;
+  // path: string;
   depth: number;
   selectedFile: string | null;
   onSelectFile: (path: string) => void;
@@ -102,7 +103,7 @@ interface FileTreeNodeProps {
 
 const FileTreeNode = ({
   node,
-  path,
+  // path,
   depth,
   selectedFile,
   onSelectFile,
@@ -151,7 +152,7 @@ const FileTreeNode = ({
               <FileTreeNode
                 key={child.name}
                 node={child}
-                path={`${path}/${child.name}`}
+                // path={`${path}/${child.name}`}
                 depth={depth + 1}
                 selectedFile={selectedFile}
                 onSelectFile={onSelectFile}
@@ -163,11 +164,11 @@ const FileTreeNode = ({
     );
   }
 
-  const isSelected = selectedFile === path;
+  const isSelected = selectedFile === node.path;
 
   return (
     <button
-      onClick={() => onSelectFile(path)}
+      onClick={() => onSelectFile(node.path)}
       className={cn(
         "w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md transition-colors text-left",
         isSelected

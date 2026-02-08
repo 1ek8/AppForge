@@ -19,7 +19,16 @@ const openRouter = new OpenRouter({
 
 const app = express();
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type']
+}));
+
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path}`, req.body);
+  next();
+});
 
 
 app.post("/template", async (req, res) => {
@@ -64,6 +73,11 @@ app.post("/template", async (req, res) => {
 app.post('/chat', async(req, res) => {
 
   try {
+
+    if(!req.body) {
+      return res.status(400).json({error: "Request body not received"});
+    }
+
     const { userPrompt, templateLength, prompts } = req.body;
 
     if (!userPrompt) {

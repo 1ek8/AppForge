@@ -41,10 +41,9 @@ const Builder = () => {
         const codeResponse = await fetch(`${BACKEND_URL}/chat`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'applixation/json'
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            classification,
             userPrompt,
             templateLength,
             prompts
@@ -142,7 +141,7 @@ const Builder = () => {
       <div className="flex-1 flex overflow-hidden">
         {/* Steps Pane - 30% */}
         <div className="w-[30%] border-r border-border overflow-hidden flex flex-col">
-          <StepsPane prompt={prompt} steps={steps} isLoading={isLoading} error={error} />
+          <StepsPane steps={steps} isLoading={isLoading} error={error} />
         </div>
 
         {/* File Explorer - 25% */}

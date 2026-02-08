@@ -159,16 +159,19 @@ const StepItem = ({ step, isLast }: StepItemProps) => {
           />
         )}
       </div>
-      <div className={`pb-6 ${isLast ? "pb-0" : ""}`}>
-        <h3
-          className={`font-medium ${
-            step.status === "pending"
-              ? "text-muted-foreground"
-              : "text-foreground"
-          }`}
-        >
-          {step.title}
-        </h3>
+      <div className={`pb-6 ${isLast ? "pb-0" : ""} flex-1`}>
+        <div className="flex items-center gap-2">
+          {getTypeIcon()}
+          <h3
+            className={`font-medium ${
+              step.status === "pending"
+                ? "text-muted-foreground"
+                : "text-foreground"
+            }`}
+          >
+            {step.title}
+          </h3>
+        </div>
         <p className="text-sm text-muted-foreground mt-0.5">
           {step.description}
         </p>
