@@ -1,14 +1,5 @@
 import { FileNode, FileNodeMap } from "@/lib/types";
 
-// const example = [{
-//     filePath: "src/index.ts", 
-//     content: "index"
-// }, 
-// {
-//     filePath: "src/components/Button.tsx", 
-//     content: "button"
-// }]
-
 export function buildFileTree(files: {filePath: string, content: string}[]): FileNode[] {
     const root: { [key: string]: FileNodeMap} = {};
 

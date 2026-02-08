@@ -12,12 +12,6 @@ import {
 import { cn } from "@/lib/utils";
 import { FileNode } from "@/lib/types";
 
-// interface FileNode {
-//   name: string;
-//   type: "file" | "folder";
-//   children?: FileNode[];
-// }
-
 interface FileExplorerProps {
   fileTree: FileNode[]
   selectedFile: string | null;
@@ -25,46 +19,6 @@ interface FileExplorerProps {
 }
 
 const FileExplorer = ({ fileTree, selectedFile, onSelectFile }: FileExplorerProps) => {
-  // Mock file structure
-  // const fileTree: FileNode[] = [
-  //   {
-  //     name: "src",
-  //     type: "folder",
-  //     children: [
-  //       {
-  //         name: "components",
-  //         type: "folder",
-  //         children: [
-  //           { name: "Header.tsx", type: "file" },
-  //           { name: "Hero.tsx", type: "file" },
-  //           { name: "Footer.tsx", type: "file" },
-  //         ],
-  //       },
-  //       {
-  //         name: "pages",
-  //         type: "folder",
-  //         children: [
-  //           { name: "Home.tsx", type: "file" },
-  //           { name: "About.tsx", type: "file" },
-  //         ],
-  //       },
-  //       { name: "App.tsx", type: "file" },
-  //       { name: "index.css", type: "file" },
-  //       { name: "main.tsx", type: "file" },
-  //     ],
-  //   },
-  //   {
-  //     name: "public",
-  //     type: "folder",
-  //     children: [
-  //       { name: "favicon.ico", type: "file" },
-  //       { name: "robots.txt", type: "file" },
-  //     ],
-  //   },
-  //   { name: "package.json", type: "file" },
-  //   { name: "tailwind.config.ts", type: "file" },
-  //   { name: "index.html", type: "file" },
-  // ];
 
   return (
     <div className="h-full flex flex-col">

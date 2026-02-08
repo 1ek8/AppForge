@@ -1,59 +1,17 @@
 import { Step } from "@/lib/types";
 import { Check, Circle, FileCode, Loader2, Terminal } from "lucide-react";
 
-// interface Step {
-//   id: number;
-//   title: string;
-//   description: string;
-//   status: "pending" | "in-progress" | "completed";
-//   type: 'file | shell';
-// }
-
 interface StepsPaneProps {
-  // prompt: string;
   isLoading: boolean;
   steps: Step[];
   error: any
 }
 
 const StepsPane = ({ isLoading, steps, error }: StepsPaneProps) => {
-  // Mock steps for demonstration
-  // const steps: Step[] = [
-  //   {
-  //     id: 1,
-  //     title: "Analyzing prompt",
-  //     description: "Understanding your requirements",
-  //     status: "completed",
-  //   },
-  //   {
-  //     id: 2,
-  //     title: "Creating project structure",
-  //     description: "Setting up files and folders",
-  //     status: "completed",
-  //   },
-  //   {
-  //     id: 3,
-  //     title: "Generating components",
-  //     description: "Building React components",
-  //     status: "in-progress",
-  //   },
-  //   {
-  //     id: 4,
-  //     title: "Styling with Tailwind",
-  //     description: "Applying responsive styles",
-  //     status: "pending",
-  //   },
-  //   {
-  //     id: 5,
-  //     title: "Adding interactivity",
-  //     description: "Implementing user interactions",
-  //     status: "pending",
-  //   },
-  // ];
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
+      {/* Header */}  
       <div className="p-4 border-b border-border shrink-0">
         <h2 className="text-lg font-semibold text-foreground">Build Steps</h2>
         <p className="text-sm text-muted-foreground mt-1">
@@ -102,7 +60,7 @@ const StepsPane = ({ isLoading, steps, error }: StepsPaneProps) => {
           <div
             className="h-full bg-primary rounded-full transition-all duration-500"
             style={{
-              width: `${(steps.filter((s) => s.status === "completed").length / steps.length) * 100}%`,
+              width: `${steps.length > 0 ? (steps.filter((s) => s.status === "completed").length / steps.length) * 100 : 0}%`
             }}
           />
         </div>

@@ -80,7 +80,9 @@ const Builder = () => {
           setSteps(steps);
           setFiles(files);
   
-          const tree = buildFileTree(files.map((f) => ({
+          const actualFiles = files.filter((f) => f.type === 'file' && f.filePath);
+
+          const tree = buildFileTree(actualFiles.map((f) => ({
             filePath: f.filePath,
             content: f.content
           })));

@@ -61,7 +61,7 @@ export class StreamParser {
                     description: `Writing file ${filePath}`,
                     status: 'completed',
                     type: 'file',
-                    content: content.trim()
+                    content: content.trim() || ""
                 };
                 this.steps.push(step);
             }
@@ -70,7 +70,7 @@ export class StreamParser {
                 this.currentArtifact.files.push({
                     type,
                     filePath,
-                    content: content.trim()
+                    content: content.trim() || ""
                 });
             } else if (type == 'shell'){
                 const step: Step = {
@@ -79,12 +79,12 @@ export class StreamParser {
                     description: content.trim(),
                     status: 'completed',
                     type: 'shell',
-                    command: content.trim()
+                    command: content.trim() || ""
                 };
                 this.steps.push(step);
 
                 if(this.currentArtifact) {
-                    this.currentArtifact.shellCommands.push(content.trim());
+                    this.currentArtifact.shellCommands.push(content.trim() || "");
                 }
             }
         }
