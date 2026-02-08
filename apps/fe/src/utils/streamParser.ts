@@ -5,6 +5,7 @@ export class StreamParser {
     private currentArtifact: ParsedArtifact | null = null;
     private steps: Step[] = [];
     private stepCounter: number = 0;
+    private processedActions: Set<string> = new Set(); 
 
     parseChunk(chunk: string): { steps: Step[]; files: ParsedFile[]; isComplete: boolean } {
         this.buffer += chunk;
@@ -46,12 +47,12 @@ export class StreamParser {
             const [fullMatch, type, filePath, content] = match;
             lastIndex = match.index + fullMatch.length;
 
-            const actionId = `${type}-${filePath || this.stepCounter}`;
-            if(this.steps.find(s => `${s.type}-${s.filePath || s.id}` === actionId)){
+            const actionId = `${type}-${filePath || "command"}`;
+            if(this.processedActions.has(actionId)){
                 continue;
             }
 
-            this.stepCounter++;
+            this.processedActions.add(actionId);
 
             if(type === 'file' && filePath){
                 const step: Step = {
@@ -93,7 +94,7 @@ export class StreamParser {
         this.buffer = '';
         this.currentArtifact = null;
         this.steps = [];
-        this.stepCounter = 0;
+        this.processedActions.clear();
     }
 
 }
