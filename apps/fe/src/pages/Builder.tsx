@@ -29,14 +29,49 @@ const Builder = () => {
     const init = async () => {
       const parser = new StreamParser();
       try {
-
-        // setIsLoading(true);
+        setIsLoading(true);
 
         const templateResponse = await axios.post(`${BACKEND_URL}/template`, {
           prompt
         });
 
         const { classification, userPrompt, templateLength, prompts } = templateResponse.data;
+
+        let templateSteps: Step[] = [];
+        let templateFiles: ParsedFile[] = [];
+
+        console.log('Template parsed:', {
+            steps: templateSteps.length,
+            files: templateFiles.length
+          });
+
+        templateSteps.forEach((step, i) => {
+          console.log(`   Step ${i}: ${step.title} (${step.type})`);
+        });
+
+        if(prompts && prompts.length > 0){
+          const fileTreePrompt = prompts[prompts.length - 1];
+          const { steps, files } = parser.parseChunk(fileTreePrompt);
+
+          setSteps(steps);
+          setFiles(files);
+
+          const actualFiles = files.filter((f) => f.type === 'file' && f.filePath);
+          console.log('Building file tree from', actualFiles.length, 'files');
+
+          const tree = buildFileTree(actualFiles.map((f) => ({
+            filePath: f.filePath,
+            content: f.content
+          })));
+          console.log('File tree built:', tree.length, 'root nodes');
+          setFileTree(tree);
+
+          const contentMap = new Map<string, string>();
+          files.map((f) => {
+            contentMap.set(f.filePath, f.content);
+          });
+          setFileContents(contentMap);
+        }
 
         const codeResponse = await fetch(`${BACKEND_URL}/chat`, {
           method: 'POST',
@@ -76,6 +111,12 @@ const Builder = () => {
             files,
             isComplete
           } = parser.parseChunk(chunk);
+
+          console.log('After parsing:', {
+            totalSteps: steps.length,
+            totalFiles: files.length,
+            isComplete
+          });
           
           setSteps(steps);
           setFiles(files);
@@ -91,7 +132,9 @@ const Builder = () => {
   
           const contentMap = new Map<string, string>();
           files.map((f) => {
-            contentMap.set(f.filePath, f.content);
+            if(f.type === 'file' && f.filePath){
+              contentMap.set(f.filePath, f.content);      
+            }
           });
           setFileContents(contentMap);
   
