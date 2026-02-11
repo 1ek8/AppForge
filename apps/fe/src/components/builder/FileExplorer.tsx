@@ -36,7 +36,6 @@ const FileExplorer = ({ fileTree, selectedFile, onSelectFile }: FileExplorerProp
           <FileTreeNode
             key={node.name}
             node={node}
-            // path={node.name}
             depth={0}
             selectedFile={selectedFile}
             onSelectFile={onSelectFile}
@@ -49,7 +48,6 @@ const FileExplorer = ({ fileTree, selectedFile, onSelectFile }: FileExplorerProp
 
 interface FileTreeNodeProps {
   node: FileNode;
-  // path: string;
   depth: number;
   selectedFile: string | null;
   onSelectFile: (path: string) => void;
@@ -57,7 +55,6 @@ interface FileTreeNodeProps {
 
 const FileTreeNode = ({
   node,
-  // path,
   depth,
   selectedFile,
   onSelectFile,
@@ -106,7 +103,6 @@ const FileTreeNode = ({
               <FileTreeNode
                 key={child.name}
                 node={child}
-                // path={`${path}/${child.name}`}
                 depth={depth + 1}
                 selectedFile={selectedFile}
                 onSelectFile={onSelectFile}

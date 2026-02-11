@@ -5,7 +5,14 @@ export class StreamParser {
     private currentArtifact: ParsedArtifact | null = null;
     private steps: Step[] = [];
     private stepCounter: number = 0;
-    private processedActions: Set<string> = new Set(); 
+    private processedActions: Set<string> = new Set();
+    private allFiles: Map<string, ParsedFile > = new Map();
+
+    resetForNextArtifact() {
+        this.buffer = '';
+        this.currentArtifact = null;
+        this.processedActions.clear();
+    }
 
     parseChunk(chunk: string): { steps: Step[]; files: ParsedFile[]; isComplete: boolean } {
         console.log('📥 CHUNK RECEIVED:', chunk.length, 'chars');
@@ -27,14 +34,15 @@ export class StreamParser {
             console.log(`extracted ${actionsAfter - actionsBefore} actions`);
         }
 
-        const isComplete = this.buffer.includes('</boltArtifact>');
+        const lastStart = this.buffer.lastIndexOf('<boltArtifact');
+        const isComplete = lastStart !== -1 && this.buffer.indexOf('</boltArtifact>', lastStart) !== -1;
         if(isComplete){
             console.log('ACTION COMPLETE')
         }
 
         return {
             steps: [...this.steps],
-            files: this.currentArtifact?.files || [],
+            files: Array.from(this.allFiles.values()),
             isComplete
         };
     }
@@ -60,59 +68,67 @@ export class StreamParser {
         const actionCompleteRegex = /<boltAction\s+type="([^"]*)"(?:\s+filePath="([^"]*)")?>([\s\S]*?)<\/boltAction>/g;
 
         let match;
-        // let lastIndex = 0;
 
         while((match = actionCompleteRegex.exec(this.buffer)) != null) {
             const [fullMatch, type, filePath, content] = match;
-            // lastIndex = match.index + fullMatch.length;
-
-            const actionId = `${type}-${filePath || "command"}`;
+            const matchPosition = match.index;
+            const actionId = `${matchPosition}-${type}-${filePath || "command"}`;
+            
             if(this.processedActions.has(actionId)){
-                console.log(`Skipping duplicate action: ${actionId}`);
                 continue;
             }
-
-            this.processedActions.add(actionId);
+            const trimmed_content = content.trim() || "";
 
             if(type === 'file' && filePath){
+
+                const isUpdate = this.allFiles.get(filePath) !== undefined;
+
                 const step: Step = {
-                    id: this.stepCounter,
-                    title: `Create ${filePath}`,
-                    description: `Writing file ${filePath}`,
+                    id: this.stepCounter++,
+                    title: `${isUpdate ? 'Update' : 'Create'} ${filePath}`,
+                    description: isUpdate ? `Updating file ${filePath}` : `Writing file ${filePath}`,
                     status: 'completed',
                     type: 'file',
-                    content: content.trim() || ""
+                    content: trimmed_content
                 };
 
                 this.steps.push(step);
 
+                const parsedFile: ParsedFile = {
+                    type,
+                    filePath,
+                    content: content.trim() || ""
+                }
+
+                this.allFiles.set(filePath, parsedFile);
+                console.log(`  ${isUpdate ? 'Updated' : 'Added'} file: ${filePath}`);
+
                 if(this.currentArtifact) {
-                    this.currentArtifact.files.push({
-                        type,
-                        filePath,
-                        content: content.trim() || ""
-                    });
-    
-                } 
-                this.stepCounter++;
-                continue;
+                    const existingIndex = this.currentArtifact.files.findIndex(f => f.filePath === filePath);
+                    if (existingIndex !== -1) {
+                        this.currentArtifact.files[existingIndex] = parsedFile;
+                    } else {
+                    this.currentArtifact.files.push(parsedFile);
+                    }
+                }
+                this.processedActions.add(actionId);
             } else if (type == 'shell'){
                 const step: Step = {
-                    id: this.stepCounter,
+                    id: this.stepCounter++,
                     title: 'Run command',
                     description: content.trim(),
                     status: 'completed',
                     type: 'shell',
                     command: content.trim() || ""
                 };
+
                 this.steps.push(step);
 
                 if(this.currentArtifact) {
                     this.currentArtifact.shellCommands.push(content.trim() || "");
                 }
 
-                this.stepCounter++;
-                continue;
+                this.processedActions.add(actionId);
             }
         }
     }

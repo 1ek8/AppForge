@@ -37,41 +37,52 @@ const Builder = () => {
 
         const { classification, userPrompt, templateLength, prompts } = templateResponse.data;
 
-        let templateSteps: Step[] = [];
-        let templateFiles: ParsedFile[] = [];
+        if(prompts && prompts.length > 0){
 
-        console.log('Template parsed:', {
-            steps: templateSteps.length,
-            files: templateFiles.length
+        let parsedSteps: Step[] = [];
+        let parsedFiles: ParsedFile[] = [];
+
+          for(const templatePrompt of prompts){
+            const parsedResult = parser.parseChunk(templatePrompt);
+            parsedSteps = parsedResult.steps;
+            parsedFiles = parsedResult.files;
+
+            console.log('Template parsed:', {
+                steps: parsedSteps.length,
+                files: parsedFiles.length
+              });
+          }
+
+          setSteps(parsedSteps);
+          setFiles(parsedFiles);
+
+          parsedSteps.forEach((step, i) => {
+            console.log(`   Step ${i}: ${step.title} (${step.type})`);
           });
 
-        templateSteps.forEach((step, i) => {
-          console.log(`   Step ${i}: ${step.title} (${step.type})`);
-        });
+          console.log('Building file tree from', files.length, 'files');
 
-        if(prompts && prompts.length > 0){
-          const fileTreePrompt = prompts[prompts.length - 1];
-          const { steps, files } = parser.parseChunk(fileTreePrompt);
-
-          setSteps(steps);
-          setFiles(files);
-
-          const actualFiles = files.filter((f) => f.type === 'file' && f.filePath);
-          console.log('Building file tree from', actualFiles.length, 'files');
-
-          const tree = buildFileTree(actualFiles.map((f) => ({
+          const tree = buildFileTree(parsedFiles.map((f) => ({
             filePath: f.filePath,
             content: f.content
           })));
+
           console.log('File tree built:', tree.length, 'root nodes');
           setFileTree(tree);
 
           const contentMap = new Map<string, string>();
-          files.map((f) => {
+          parsedFiles.forEach((f) => {
             contentMap.set(f.filePath, f.content);
           });
+
           setFileContents(contentMap);
+
+          if (!selectedFile && files.length > 0) {
+              setSelectedFile(files[0].filePath);
+            }
         }
+
+        parser.resetForNextArtifact();
 
         const codeResponse = await fetch(`${BACKEND_URL}/chat`, {
           method: 'POST',
@@ -105,10 +116,11 @@ const Builder = () => {
           }
 
           const chunk = decoder.decode(value, { stream: true });
+          console.log("📨 Received chat chunk:", chunk.substring(0, 100) + (chunk.length > 100 ? "..." : ""));
 
           const { 
-            steps,
-            files,
+            steps: parsedSteps,
+            files: parsedFiles,
             isComplete
           } = parser.parseChunk(chunk);
 
@@ -118,12 +130,12 @@ const Builder = () => {
             isComplete
           });
           
-          setSteps(steps);
-          setFiles(files);
+          setSteps(parsedSteps);
+          setFiles(parsedFiles);
   
-          const actualFiles = files.filter((f) => f.type === 'file' && f.filePath);
+          console.log('Building file tree from', files.length, 'files');
 
-          const tree = buildFileTree(actualFiles.map((f) => ({
+          const tree = buildFileTree(parsedFiles.map((f) => ({
             filePath: f.filePath,
             content: f.content
           })));
@@ -131,8 +143,8 @@ const Builder = () => {
           setFileTree(tree);
   
           const contentMap = new Map<string, string>();
-          files.map((f) => {
-            if(f.type === 'file' && f.filePath){
+          parsedFiles.map((f) => {
+            if(f.filePath){
               contentMap.set(f.filePath, f.content);      
             }
           });
