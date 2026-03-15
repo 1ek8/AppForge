@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import Editor from "@monaco-editor/react";
+import { useWebContainer } from "@/hooks/useWebContainer";
 
 interface PreviewPaneProps {
   fileContent: string;
@@ -11,6 +12,7 @@ interface PreviewPaneProps {
 
 const PreviewPane = ({ selectedFile, fileContent }: PreviewPaneProps) => {
   const [activeTab, setActiveTab] = useState<"preview" | "code">("code");
+  const { instance, isBooting, serverUrl } = useWebContainer();
 
   const getLanguage = (filename: string | null): string => {
     if (!filename) return 'plaintext';
