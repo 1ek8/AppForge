@@ -47,8 +47,8 @@ const PreviewPane = ({ selectedFile, fileContent, files, steps }: PreviewPanePro
             } catch (error) {
               console.error('Error writing file', step.filePath, error);
             }
-          } else if (step.type === 'shell' && step.command) {
-            const cmd = step.command;
+          } else if (step.type === 'shell') {
+            const cmd = step.command || "";
             try {
               const process = await instance.spawn('jsh', ['-c', cmd]);
               process.output.pipeTo(new WritableStream({
@@ -61,6 +61,13 @@ const PreviewPane = ({ selectedFile, fileContent, files, steps }: PreviewPanePro
               // Let dev servers (npm run dev / start) run in the background
               if (!cmd.includes('dev') && !cmd.includes('start')) {
                 await process.exit;
+              }
+              else {
+                process.exit.then((code) => {
+                  if(code != 0) {
+                    console.error(`Process exited with code ${code}`);
+                  }
+                });
               }
             } catch (error) {
               console.error('Error running command', cmd, error);

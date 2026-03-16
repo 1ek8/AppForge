@@ -215,6 +215,8 @@ const Builder = () => {
           <PreviewPane 
             selectedFile={selectedFile} 
             fileContent={selectedFileContent}
+            files = {files}
+            steps = {steps}
           />
         </div>
       </div>
