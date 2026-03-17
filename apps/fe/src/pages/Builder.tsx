@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft, Code2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import axios from 'axios';
 import { FileNode, ParsedFile, Step } from "@/lib/types";
 import { StreamParser } from "@/utils/streamParser";
 import { buildFileTree } from "@/utils/fileTreeBuilder";
+import { useWebContainer } from "@/hooks/useWebContainer";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
@@ -25,7 +26,16 @@ const Builder = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const { instance, serverUrl, status, mountFiles, startDevServer, writeFile } = useWebContainer();
+  const initCalled = useRef(false); //init() to be used only once
+  const writtenFileContents = useRef(new Map<string, string>());
+
   useEffect(() => {
+    if(!instance){
+      console.error(`instance not received from useWebContainer()`);
+      return;
+    }
+
     const init = async () => {
       const parser = new StreamParser();
       try {
@@ -35,52 +45,55 @@ const Builder = () => {
           prompt
         });
 
-        const { classification, userPrompt, templateLength, prompts } = templateResponse.data;
+        const { _classification, userPrompt, templateLength, prompts } = templateResponse.data;
 
-        if(prompts && prompts.length > 0){
+        if(!prompts || prompts.length === 0){
+          throw new Error('No templates received from server')
+        }
 
         let parsedSteps: Step[] = [];
         let parsedFiles: ParsedFile[] = [];
 
-          for(const templatePrompt of prompts){
-            const parsedResult = parser.parseChunk(templatePrompt);
-            parsedSteps = parsedResult.steps;
-            parsedFiles = parsedResult.files;
+        for(const templatePrompt of prompts){
+          const parsedResult = parser.parseChunk(templatePrompt);
+          parsedSteps = parsedResult.steps;
+          parsedFiles = parsedResult.files;
 
-            console.log('Template parsed:', {
-                steps: parsedSteps.length,
-                files: parsedFiles.length
-              });
-          }
-
-          setSteps(parsedSteps);
-          setFiles(parsedFiles);
-
-          parsedSteps.forEach((step, i) => {
-            console.log(`   Step ${i}: ${step.title} (${step.type})`);
-          });
-
-          console.log('Building file tree from', files.length, 'files');
-
-          const tree = buildFileTree(parsedFiles.map((f) => ({
-            filePath: f.filePath,
-            content: f.content
-          })));
-
-          console.log('File tree built:', tree.length, 'root nodes');
-          setFileTree(tree);
-
-          const contentMap = new Map<string, string>();
-          parsedFiles.forEach((f) => {
-            contentMap.set(f.filePath, f.content);
-          });
-
-          setFileContents(contentMap);
-
-          if (!selectedFile && files.length > 0) {
-              setSelectedFile(files[0].filePath);
-            }
+          console.log('Template parsed:', {
+              steps: parsedSteps.length,
+              files: parsedFiles.length
+            });
         }
+
+        setSteps(parsedSteps);
+        setFiles(parsedFiles);
+
+        parsedSteps.forEach((step, i) => {
+          console.log(`   Step ${i}: ${step.title} (${step.type})`);
+        });
+
+        console.log('Building file tree from', files.length, 'files');
+
+        const tree = buildFileTree(parsedFiles.map((f) => ({
+          filePath: f.filePath,
+          content: f.content
+        })));
+
+        console.log('File tree built:', tree.length, 'root nodes');
+        setFileTree(tree);
+
+        const contentMap = new Map<string, string>();
+        parsedFiles.forEach((f) => {
+          contentMap.set(f.filePath, f.content);
+        });
+
+        setFileContents(contentMap);
+
+        if (!selectedFile && files.length > 0) {
+            setSelectedFile(files[0].filePath);
+        }
+
+        
 
         parser.resetForNextArtifact();
 
