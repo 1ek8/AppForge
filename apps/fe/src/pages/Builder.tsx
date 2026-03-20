@@ -31,153 +31,174 @@ const Builder = () => {
   const writtenFileContents = useRef(new Map<string, string>());
 
   useEffect(() => {
-    if(!instance){
-      console.error(`instance not received from useWebContainer()`);
+    if(!instance || initCalled.current){
+      console.error(`Waiting for webcontainer instance`);
       return;
     }
 
+    initCalled.current = true;
+
     const init = async () => {
       const parser = new StreamParser();
-      try {
-        setIsLoading(true);
+        try {
+          setIsLoading(true);
 
-        const templateResponse = await axios.post(`${BACKEND_URL}/template`, {
-          prompt
-        });
+          // Template processing
 
-        const { _classification, userPrompt, templateLength, prompts } = templateResponse.data;
+          const templateResponse = await axios.post(`${BACKEND_URL}/template`, {
+            prompt
+          });
 
-        if(!prompts || prompts.length === 0){
-          throw new Error('No templates received from server')
-        }
+          const { classification, userPrompt, templateLength, prompts } = templateResponse.data;
 
-        let parsedSteps: Step[] = [];
-        let parsedFiles: ParsedFile[] = [];
-
-        for(const templatePrompt of prompts){
-          const parsedResult = parser.parseChunk(templatePrompt);
-          parsedSteps = parsedResult.steps;
-          parsedFiles = parsedResult.files;
-
-          console.log('Template parsed:', {
-              steps: parsedSteps.length,
-              files: parsedFiles.length
-            });
-        }
-
-        setSteps(parsedSteps);
-        setFiles(parsedFiles);
-
-        parsedSteps.forEach((step, i) => {
-          console.log(`   Step ${i}: ${step.title} (${step.type})`);
-        });
-
-        console.log('Building file tree from', files.length, 'files');
-
-        const tree = buildFileTree(parsedFiles.map((f) => ({
-          filePath: f.filePath,
-          content: f.content
-        })));
-
-        console.log('File tree built:', tree.length, 'root nodes');
-        setFileTree(tree);
-
-        const contentMap = new Map<string, string>();
-        parsedFiles.forEach((f) => {
-          contentMap.set(f.filePath, f.content);
-        });
-
-        setFileContents(contentMap);
-
-        if (!selectedFile && files.length > 0) {
-            setSelectedFile(files[0].filePath);
-        }
-
-        
-
-        parser.resetForNextArtifact();
-
-        const codeResponse = await fetch(`${BACKEND_URL}/chat`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            userPrompt,
-            templateLength,
-            prompts
-          })
-        });
-
-        if(!codeResponse.ok){
-          throw new Error('Failed to fetch chat response');
-        }
-
-        const reader = codeResponse.body?.getReader();
-        const decoder = new TextDecoder();
-
-        if(!reader) {
-          throw new Error('No reader available');
-        }
-
-        while(true){
-          const {done, value} = await reader.read();
-
-          if(done) {
-            setIsLoading(false);
-            break;
+          if(!prompts || prompts.length === 0){
+            throw new Error('No templates received from server')
           }
 
-          const chunk = decoder.decode(value, { stream: true });
-          console.log("📨 Received chat chunk:", chunk.substring(0, 100) + (chunk.length > 100 ? "..." : ""));
+          let parsedSteps: Step[] = [];
+          let parsedFiles: ParsedFile[] = [];
 
-          const { 
-            steps: parsedSteps,
-            files: parsedFiles,
-            isComplete
-          } = parser.parseChunk(chunk);
+          for(const templatePrompt of prompts){
+            const parsedResult = parser.parseChunk(templatePrompt);
+            parsedSteps = parsedResult.steps;
+            parsedFiles = parsedResult.files;
 
-          console.log('After parsing:', {
-            totalSteps: steps.length,
-            totalFiles: files.length,
-            isComplete
-          });
-          
+            console.log('Template parsed:', {
+                steps: parsedSteps.length,
+                files: parsedFiles.length
+              });
+          }
+
           setSteps(parsedSteps);
           setFiles(parsedFiles);
-  
+
+          parsedSteps.forEach((step, i) => {
+            console.log(`   Step ${i}: ${step.title} (${step.type})`);
+          });
+
           console.log('Building file tree from', files.length, 'files');
 
           const tree = buildFileTree(parsedFiles.map((f) => ({
             filePath: f.filePath,
             content: f.content
           })));
-  
-          setFileTree(tree);
-  
-          const contentMap = new Map<string, string>();
-          parsedFiles.map((f) => {
-            if(f.filePath){
-              contentMap.set(f.filePath, f.content);      
-            }
-          });
-          setFileContents(contentMap);
-  
-          if(isComplete) {
-            setIsLoading(false);
-            break;
-          }
-        }
 
-      } catch (error) {
-        console.log(`Failed to fetch template for prompt: ${prompt}, got the following error\n${error}`);
-        setError(error instanceof Error ? error.message : 'Uknown error');
-        setIsLoading(false);
-      }
+          console.log('File tree built:', tree.length, 'root nodes');
+          setFileTree(tree);
+
+          const contentMap = new Map<string, string>();
+          parsedFiles.forEach((f) => {
+            contentMap.set(f.filePath, f.content);
+          });
+
+          setFileContents(contentMap);
+
+          if (!selectedFile && files.length > 0) {
+              setSelectedFile(files[0].filePath);
+          }
+
+          // Mounting + devServer start
+          const filesToMount = parsedFiles.filter(f => f.type === 'file' && f.filePath && f.content !== undefined)
+                              .map(f => ({ filePath: f.filePath, content: f.content }));
+
+          await mountFiles(filesToMount);
+
+          filesToMount.forEach(f => writtenFileContents.current.set(f.filePath, f.content));
+          
+          await startDevServer();
+
+          parser.resetForNextArtifact();
+
+          // Response streaming
+
+          const codeResponse = await fetch(`${BACKEND_URL}/chat`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              userPrompt,
+              templateLength,
+              prompts
+            })
+          });
+
+          if(!codeResponse.ok){
+            throw new Error('Failed to fetch chat response');
+          }
+
+          const reader = codeResponse.body?.getReader();
+          const decoder = new TextDecoder();
+
+          if(!reader) {
+            throw new Error('No reader available');
+          }
+
+          while(true){
+            const {done, value} = await reader.read();
+
+            if(done) {
+              setIsLoading(false);
+              break;
+            }
+
+            const chunk = decoder.decode(value, { stream: true });
+            console.log("📨 Received chat chunk:", chunk.substring(0, 100) + (chunk.length > 100 ? "..." : ""));
+
+            const { 
+              steps: parsedSteps,
+              files: parsedFiles,
+              isComplete
+            } = parser.parseChunk(chunk);
+
+            console.log('After parsing:', {
+              totalSteps: steps.length,
+              totalFiles: files.length,
+              isComplete
+            });
+            
+            setSteps(parsedSteps);
+            setFiles(parsedFiles);
+
+            //forEach doesnt allow await fn()
+            for(const file of parsedFiles) {
+              if(file.type === 'file' && file.filePath && file.content !== undefined && writtenFileContents.current.get(file.filePath) !== file.content){
+                writtenFileContents.current.set(file.filePath, file.content);
+                await writeFile(file.filePath, file.content);
+              }
+            }
+    
+            console.log('Building file tree from', files.length, 'files');
+
+            const tree = buildFileTree(parsedFiles.map((f) => ({
+              filePath: f.filePath,
+              content: f.content
+            })));
+    
+            setFileTree(tree);
+    
+            const contentMap = new Map<string, string>();
+            parsedFiles.map((f) => {
+              if(f.filePath){
+                contentMap.set(f.filePath, f.content);      
+              }
+            });
+            setFileContents(contentMap);
+    
+            if(isComplete) {
+              setIsLoading(false);
+              break;
+            }
+          }
+        } catch (error) {
+            console.log(`Failed to fetch template for prompt: ${prompt}, got the following error\n${error}`);
+            setError(error instanceof Error ? error.message : 'Uknown error');
+            setIsLoading(false);
+        }
     };
 
     init();
-  }, [prompt]);
+  }, [prompt, instance]);
 
   const selectedFileContent = selectedFile ? fileContents.get(selectedFile) : null;
 
@@ -230,6 +251,8 @@ const Builder = () => {
             fileContent={selectedFileContent}
             files = {files}
             steps = {steps}
+            serverUrl = {serverUrl}
+            webContainerStatus = {status}
           />
         </div>
       </div>
