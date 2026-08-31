@@ -1,4 +1,11 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const apiDir = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(apiDir, "../..");
+dotenv.config({ path: path.join(rootDir, ".env") });
+dotenv.config();
 
 import express from "express";
 import cors from "cors";
