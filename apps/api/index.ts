@@ -1,10 +1,10 @@
-require("dotenv-mono").load();
+import "dotenv/config";
 
 import express from "express";
 import cors from "cors";
 
-const OPENROUTER_API_KEY = process.env.QWEN_KEY;
-const models: string[] = ['mistralai/devstral-2512:free', 'mistralai/devstral-2512', 'deepseek/deepseek-v3.2'];
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const models: string[] = ['deepseek/deepseek-v4-flash-0731', 'openai/gpt-oss-120b:free', 'cohere/north-mini-code:free'];
 
 import { OpenRouter } from '@openrouter/sdk';
 import { getSystemPrompt } from './prompts/systemPrompt.ts';
@@ -24,6 +24,10 @@ app.use(cors({
   methods: ['GET', 'POST'],
   allowedHeaders: ['Content-Type']
 }));
+
+app.get("/", (_req, res) => {
+  res.json({ status: "ok" });
+});
 
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.path}`, req.body);

@@ -17,6 +17,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@openrouter/sdk": "^1.2.85",
     "@types/express": "^5.0.6",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
