@@ -1,17 +1,32 @@
 import dotenv from "dotenv";
 import path from "node:path";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const apiDir = path.dirname(fileURLToPath(import.meta.url));
-const rootDir = path.resolve(apiDir, "../..");
-dotenv.config({ path: path.join(rootDir, ".env") });
-dotenv.config();
+function loadEnvFromRoot() {
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  const dirs = new Set<string>([process.cwd(), moduleDir]);
+  let dir = process.cwd();
+  for (let i = 0; i < 4; i++) {
+    dir = path.resolve(dir, "..");
+    dirs.add(dir);
+  }
+  for (const d of dirs) {
+    const file = path.join(d, ".env");
+    if (fs.existsSync(file)) {
+      dotenv.config({ path: file, override: true });
+      return file;
+    }
+  }
+  return null;
+}
+loadEnvFromRoot();
 
 import express from "express";
 import cors from "cors";
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-const models: string[] = ['deepseek/deepseek-v4-flash-0731', 'openai/gpt-oss-120b:free', 'cohere/north-mini-code:free'];
+const models: string[] = ['deepseek/deepseek-v4-flash-0731', 'cohere/north-mini-code:free', 'deepseek/deepseek-v3.2'];
 
 import { OpenRouter } from '@openrouter/sdk';
 import { getSystemPrompt } from './prompts/systemPrompt.ts';
@@ -159,7 +174,7 @@ async function classifyTemplate(prompt: string): Promise<PromptTemplate> {
         content: prompt,
       }
     ],
-    maxOutputTokens: 100
+    maxOutputTokens: 1000
   });
 
   const template_text = await template_result.getText();
