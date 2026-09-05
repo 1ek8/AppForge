@@ -1,27 +1,3 @@
-import dotenv from "dotenv";
-import path from "node:path";
-import fs from "node:fs";
-import { fileURLToPath } from "node:url";
-
-function loadEnvFromRoot() {
-  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-  const dirs = new Set<string>([process.cwd(), moduleDir]);
-  let dir = process.cwd();
-  for (let i = 0; i < 4; i++) {
-    dir = path.resolve(dir, "..");
-    dirs.add(dir);
-  }
-  for (const d of dirs) {
-    const file = path.join(d, ".env");
-    if (fs.existsSync(file)) {
-      dotenv.config({ path: file, override: true });
-      return file;
-    }
-  }
-  return null;
-}
-loadEnvFromRoot();
-
 import express from "express";
 import cors from "cors";
 
