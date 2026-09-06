@@ -1,5 +1,7 @@
 substitutions:
   _VITE_BACKEND_URL: https://appforge-api-500273261728.asia-south1.run.app
+options:
+  logging: CLOUD_LOGGING_ONLY
 steps:
   - name: "gcr.io/cloud-builders/docker"
     args:
