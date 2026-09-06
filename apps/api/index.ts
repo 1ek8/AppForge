@@ -126,8 +126,10 @@ app.post('/chat', async(req, res) => {
 
 })
 
-app.listen(3000, () => {
-  console.log("Server runnning on localhost:3000");
+const port = Number(process.env.PORT) || 3000;
+
+app.listen(port, () => {
+  console.log(`Server running on localhost:${port}`);
 });
 
 enum PromptTemplate {
