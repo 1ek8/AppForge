@@ -1,0 +1,28 @@
+substitutions:
+  _VITE_BACKEND_URL: https://appforge-api-500273261728.asia-south1.run.app
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "build"
+      - "-f"
+      - "apps/fe/Dockerfile"
+      - "--build-arg"
+      - "VITE_BACKEND_URL=${_VITE_BACKEND_URL}"
+      - "-t"
+      - "asia-south1-docker.pkg.dev/${PROJECT_ID}/appforge/appforge-fe:${SHORT_SHA}"
+      - "."
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "push"
+      - "asia-south1-docker.pkg.dev/${PROJECT_ID}/appforge/appforge-fe:${SHORT_SHA}"
+  - name: "gcr.io/cloud-builders/gcloud"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |-
+        gcloud run deploy appforge-fe \
+          --image=asia-south1-docker.pkg.dev/${PROJECT_ID}/appforge/appforge-fe:${SHORT_SHA} \
+          --region=asia-south1 --allow-unauthenticated \
+          --memory=256Mi --cpu=1 --min-instances=0
+images:
+  - "asia-south1-docker.pkg.dev/${PROJECT_ID}/appforge/appforge-fe:${SHORT_SHA}"

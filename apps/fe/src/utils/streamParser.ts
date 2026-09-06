@@ -1,49 +1,66 @@
 import { ParsedArtifact, ParsedFile, Step } from "@/lib/types";
 
+export interface CompletedAction {
+  type: 'file' | 'shell';
+  filePath?: string;
+  command?: string;
+}
+
+export interface OpenAction {
+  type: 'file' | 'shell';
+  filePath?: string;
+}
+
+export interface ParseResult {
+  steps: Step[];
+  files: ParsedFile[];
+  isComplete: boolean;
+  openAction: OpenAction | null;
+  completedActions: CompletedAction[];
+}
+
 export class StreamParser {
     private buffer: string = '';
     private currentArtifact: ParsedArtifact | null = null;
     private steps: Step[] = [];
     private stepCounter: number = 0;
     private processedActions: Set<string> = new Set();
-    private allFiles: Map<string, ParsedFile > = new Map();
+    private allFiles: Map<string, ParsedFile> = new Map();
+    private actionCompleteRegex = /<boltAction\s+type="([^"]*)"(?:\s+filePath="([^"]*)")?>([\s\S]*?)<\/boltAction>/g;
+    private lastProcessedEnd = 0;
 
     resetForNextArtifact() {
         this.buffer = '';
         this.currentArtifact = null;
         this.processedActions.clear();
+        this.lastProcessedEnd = 0;
     }
 
-    parseChunk(chunk: string): { steps: Step[]; files: ParsedFile[]; isComplete: boolean } {
-        console.log('📥 CHUNK RECEIVED:', chunk.length, 'chars');
+    reset() {
+        this.resetForNextArtifact();
+        this.steps = [];
+        this.stepCounter = 0;
+        this.allFiles.clear();
+    }
+
+    parseChunk(chunk: string): ParseResult {
         this.buffer += chunk;
-        console.log('📦 Buffer size:', this.buffer.length, 'chars');
 
         if(!this.currentArtifact){
             this.extractArtifact();
-            if(this.currentArtifact){
-                console.log('Found artifact with id:', this.currentArtifact.id, ' and title - ', this.currentArtifact.title);
-            }
         }
 
-        const actionsBefore = this.steps.length;
-        this.extractActions();
-        const actionsAfter = this.steps.length;
-
-        if(actionsBefore < actionsAfter){
-            console.log(`extracted ${actionsAfter - actionsBefore} actions`);
-        }
+        const completedActions = this.extractActions();
 
         const lastStart = this.buffer.lastIndexOf('<boltArtifact');
         const isComplete = lastStart !== -1 && this.buffer.indexOf('</boltArtifact>', lastStart) !== -1;
-        if(isComplete){
-            console.log('ACTION COMPLETE')
-        }
 
         return {
             steps: [...this.steps],
             files: Array.from(this.allFiles.values()),
-            isComplete
+            isComplete,
+            openAction: this.trackOpenAction(),
+            completedActions
         };
     }
 
@@ -52,9 +69,6 @@ export class StreamParser {
 
         if(artifactMatch) {
             const [, id, title] = artifactMatch;
-            console.log('Extracted artifact metadata:');
-            console.log('   ID:', id);
-            console.log('   Title:', title);
             this.currentArtifact = {
                 id,
                 title,
@@ -64,19 +78,24 @@ export class StreamParser {
         }
     }
 
-    private extractActions() {
-        const actionCompleteRegex = /<boltAction\s+type="([^"]*)"(?:\s+filePath="([^"]*)")?>([\s\S]*?)<\/boltAction>/g;
+    private extractActions(): CompletedAction[] {
+        const completedActions: CompletedAction[] = [];
+
+        const OPEN_TAG_SAFETY = 96;
+        this.actionCompleteRegex.lastIndex = Math.max(0, this.lastProcessedEnd - OPEN_TAG_SAFETY);
 
         let match;
-
-        while((match = actionCompleteRegex.exec(this.buffer)) != null) {
+        while((match = this.actionCompleteRegex.exec(this.buffer)) != null) {
             const [fullMatch, type, filePath, content] = match;
             const matchPosition = match.index;
             const actionId = `${matchPosition}-${type}-${filePath || "command"}`;
-            
+
+            this.lastProcessedEnd = match.index + fullMatch.length;
+
             if(this.processedActions.has(actionId)){
                 continue;
             }
+
             const trimmed_content = content.trim() || "";
 
             if(type === 'file' && filePath){
@@ -101,17 +120,18 @@ export class StreamParser {
                 }
 
                 this.allFiles.set(filePath, parsedFile);
-                console.log(`  ${isUpdate ? 'Updated' : 'Added'} file: ${filePath}`);
 
                 if(this.currentArtifact) {
                     const existingIndex = this.currentArtifact.files.findIndex(f => f.filePath === filePath);
                     if (existingIndex !== -1) {
                         this.currentArtifact.files[existingIndex] = parsedFile;
                     } else {
-                    this.currentArtifact.files.push(parsedFile);
+                        this.currentArtifact.files.push(parsedFile);
                     }
                 }
-                this.processedActions.add(actionId);
+
+                completedActions.push({ type: 'file', filePath });
+
             } else if (type == 'shell'){
                 const step: Step = {
                     id: this.stepCounter++,
@@ -119,26 +139,42 @@ export class StreamParser {
                     description: content.trim(),
                     status: 'completed',
                     type: 'shell',
-                    command: content.trim() || ""
+                    command: trimmed_content
                 };
 
                 this.steps.push(step);
 
                 if(this.currentArtifact) {
-                    this.currentArtifact.shellCommands.push(content.trim() || "");
+                    this.currentArtifact.shellCommands.push(trimmed_content);
                 }
 
-                this.processedActions.add(actionId);
+                completedActions.push({ type: 'shell', command: trimmed_content });
             }
+
+            this.processedActions.add(actionId);
         }
+
+        return completedActions;
     }
 
-    reset() {
-        this.buffer = '';
-        this.currentArtifact = null;
-        this.steps = [];
-        this.processedActions.clear();
-        this.stepCounter = 0;
+    private trackOpenAction(): OpenAction | null {
+        let lastOpen: RegExpMatchArray | null = null;
+        const openActionRegex = /<boltAction\s+type="([^"]*)"(?:\s+filePath="([^"]*)")?\s*>/g;
+        let openMatch;
+
+        while((openMatch = openActionRegex.exec(this.buffer)) != null) {
+            const openEnd = openMatch.index + openMatch[0].length;
+            if (openEnd <= this.lastProcessedEnd) continue;
+            lastOpen = openMatch;
+        }
+
+        if(!lastOpen) return null;
+
+        const type = lastOpen[1] === 'shell' ? 'shell' as const : 'file' as const;
+        return {
+            type,
+            filePath: lastOpen[2]
+        };
     }
 
 }

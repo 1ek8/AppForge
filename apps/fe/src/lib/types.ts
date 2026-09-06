@@ -22,6 +22,17 @@ export interface Step {
   command?: string;
 }
 
+export type PhaseKey = 'templating' | 'building' | 'running';
+
+export interface Phase {
+  key: PhaseKey;
+  status: 'idle' | 'running' | 'done' | 'error';
+  current: string | null;
+  summary: string | null;
+  ledger: string[];
+  error?: string | null;
+}
+
 export interface FileNode {
   name: string;
   type: 'file' | 'folder';

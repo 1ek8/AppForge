@@ -42,3 +42,9 @@ README.md
 
 .repomixignore
 *repomix*
+
+# Deployment plan (not for upload)
+deployment.md
+
+# direnv (per-dir gcloud project)
+.envrc

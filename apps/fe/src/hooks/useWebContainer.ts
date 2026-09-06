@@ -12,10 +12,18 @@ export type WebContainerStatus =
   | 'ready'
   | 'error';
 
+export interface WebContainerEvent {
+  id: number;
+  label: string;
+  status: 'running' | 'done' | 'error';
+  error?: string;
+}
+
 export interface UseWebContainerReturn {
   instance: WebContainer | null;
   serverUrl: string | null;
   status: WebContainerStatus;
+  events: WebContainerEvent[];
   mountFiles: (files: Array<{ filePath: string; content: string }>) => Promise<void>;
   startDevServer: () => Promise<void>;
   writeFile: (filePath: string, content: string) => Promise<void>;
@@ -25,7 +33,14 @@ export function useWebContainer(): UseWebContainerReturn {
   const [instance, setInstance] = useState<WebContainer | null>(null);
   const [status, setStatus] = useState<WebContainerStatus>('idle');
   const [serverUrl, setServerUrl] = useState<string | null>(null);
+  const [events, setEvents] = useState<WebContainerEvent[]>([]);
   const serverReadyRegistered = useRef(false);
+  const eventIdRef = useRef(0);
+
+  const pushEvent = useCallback((label: string, eventStatus: WebContainerEvent['status'], error?: string) => {
+    const id = ++eventIdRef.current;
+    setEvents((prev) => [...prev, { id, label, status: eventStatus, error }]);
+  }, []);
 
   useEffect(() => {
     setStatus('booting');
@@ -38,13 +53,16 @@ export function useWebContainer(): UseWebContainerReturn {
       console.log('Webcontainer booted successfully')
     }).catch(err => {
       console.error('Webcontainer couldnt be booted correctly');
-      if(mounted) setStatus('error');
+      if(mounted) {
+        setStatus('error');
+        pushEvent('Booting WebContainer', 'error', 'WebContainer failed to boot. Check the browser console for details.');
+      }
     });
 
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [pushEvent]);
 
   const mountFiles = useCallback(
     async (files: Array<{ filePath: string, content: string }>) => {
@@ -69,6 +87,7 @@ export function useWebContainer(): UseWebContainerReturn {
 
     try{
       setStatus('installing');
+      pushEvent('npm install', 'running');
       console.log('Before running npm install');
       const installProc = await instance.spawn('npm', ['install']);
 
@@ -81,14 +100,17 @@ export function useWebContainer(): UseWebContainerReturn {
       );
 
       const installCode = await installProc.exit;
+      pushEvent('npm install', 'done');
       if(installCode !== 0){
         console.error('Webcontainers npm install exited with non-zero code: ', installCode);
         setStatus('error');
+        pushEvent('npm install', 'error', `npm install exited with code ${installCode}`);
         return;
       }
       console.log('npm install executed');
 
       setStatus('starting');
+      pushEvent('npm run dev', 'running');
       console.log('Starting dev server');
       const devProc = await instance.spawn('npm', ['run', 'dev']);
 
@@ -107,13 +129,15 @@ export function useWebContainer(): UseWebContainerReturn {
           console.log('Webcontianer server ready at url: ', url);
           setServerUrl(url);
           setStatus('ready');
+          pushEvent('npm run dev', 'done');
         });
       }
     } catch(err) {
       console.error('Webcontainer startDevserver error: ', err);
       setStatus('error');
+      pushEvent('npm run dev', 'error', 'Failed to start the dev server');
     }
-  }, [instance]);
+  }, [instance, pushEvent]);
 
   const writeFile = useCallback(
     async (filePath: string, content: string) => {
@@ -135,5 +159,5 @@ export function useWebContainer(): UseWebContainerReturn {
     [instance]
   );
 
-  return { instance, serverUrl, status, mountFiles, startDevServer, writeFile };
+  return { instance, serverUrl, status, events, mountFiles, startDevServer, writeFile };
 }
