@@ -1,5 +1,5 @@
 substitutions:
-  _VITE_BACKEND_URL: https://api.appforge.byaniket.site
+  _VITE_BACKEND_URL: https://appforge-api.byaniket.site
 options:
   logging: CLOUD_LOGGING_ONLY
 steps:
