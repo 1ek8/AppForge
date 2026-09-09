@@ -1,135 +1,102 @@
-# Turborepo starter
+# AppForge
 
-This Turborepo starter is maintained by the Turborepo core team.
+AppForge is an AI website builder: you describe a site in plain English, an LLM
+classifies the project and generates a working React + TypeScript codebase, and the
+resulting app runs **live in your browser** via WebContainer — with a split-pane editor,
+file tree, and running preview — no third-party hosting needed for the generated site.
 
-## Using this example
+## Stack
 
-Run the following command:
+- **Frontend** — `apps/fe`: Vite 5 + React 19 + TypeScript, Tailwind, shadcn/ui,
+  Monaco editor, `@webcontainer/api` for in-browser runtime, `react-router-dom`.
+  Cross-origin isolation (COOP/COEP) is required for WebContainer and is set in both
+  dev (`vite.config.ts`) and prod (`apps/fe/serve.ts`).
+- **Backend** — `apps/api`: Express 5 on Bun. Endpoints:
+  - `POST /template` — classifies a prompt and returns a project template (non-streamed).
+  - `POST /chat` — streams a full multi-file project generated from the prompt.
+  - `GET /` — health (`{"status":"ok"}`).
+  - OpenRouter-backed LLM calls (secret injected at deploy time, never committed).
+- **Monorepo** — Turborepo + Bun workspaces; shared `packages/ui`, `packages/db`,
+  `packages/typescript-config`, `packages/eslint-config`.
+
+## Repo layout
+
+```
+apps/
+  api/          Express + Bun backend (Dockerfile, PORT-aware)
+  fe/           React SPA + bun static server (Dockerfile, serve.ts)
+packages/
+  ui/           shared UI components
+  db/           (schema/types stubs)
+  typescript-config/ eslint-config/
+cloudbuild/
+  api.yaml      Cloud Build steps: build+push image, gcloud run deploy appforge-api
+  fe.yaml       same for appforge-fe (bakes VITE_BACKEND_URL)
+deployment.md  GCP deployment plan + gotchas (gitignored, not in git)
+```
+
+## Local development
+
+Requirements: Node >= 18, `bun` 1.x.
+
+1. Set env files (copy from `.env.example`):
+   - `apps/api/.env`: `OPENROUTER_API_KEY=...`
+   - `apps/fe/.env`: `VITE_BACKEND_URL=http://localhost:3000`
+2. Install + run:
+   ```sh
+   bun install
+   bun run dev          # api on :3000, fe on :8080
+   ```
+
+## Scripts (from repo root)
 
 ```sh
-npx create-turbo@latest
+bun run build        # turbo run build
+bun run dev          # turbo run dev
+bun run lint         # turbo run lint
+bun run check-types  # turbo run check-types
+bun run test         # turbo run test
 ```
 
-## What's inside?
+## Production deployment
 
-This Turborepo includes the following packages/apps:
+- Both services run on **Cloud Run** in `asia-south1` (scale-to-zero, memory/cpu
+  sized to fit the free tier), images in Artifact Registry.
+- **Continuous deployment**: a push to `main` fires Cloud Build triggers `api-deploy`
+  and `fe-deploy`, which rebuild + redeploy both services automatically.
+  (Cloud Build SA must be a user-managed SA; see `deployment.md` gotchas.)
+- **Secrets**: `OPENROUTER_API_KEY` lives in Secret Manager
+  (`openrouter_api_key`, asia-south1) and is injected via `--set-secrets`.
+- **Custom domain**: Cloudflare DNS + a Cloudflare Worker reverse-proxy forwards
+  the branded subdomains to the Cloud Run services (see `deployment.md` Phase 3.6).
 
-### Apps and Packages
+### Live URLs
 
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
+| Component | URL |
+| --- | --- |
+| Frontend | https://appforge.byaniket.site |
+| Backend | https://appforge-api.byaniket.site |
+| FE origin (Cloud Run) | https://appforge-fe-500273261728.asia-south1.run.app |
+| API origin (Cloud Run) | https://appforge-api-500273261728.asia-south1.run.app |
 
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
+### Deploying another project on byaniket.site
 
-### Utilities
+The one-time GCP + Cloudflare infra (zone, SSL, Search Console verification, worker
+`appforge-proxy`, wildcard route `*byaniket.site/*`) is shared and already done. To put a
+new project `N` at `N.byaniket.site` + `api-N.byaniket.site`: deploy its FE/API to Cloud Run
+in asia-south1, add 2 proxied CNAMEs in the Cloudflare dashboard, and add 2 lines to the
+worker's `ORIGINS` map. The full, self-contained runbook is `deployment.md` (gitignored):
+copy it into the new project's local repo and point your opencode terminal at it
+(see its "How to use this file" and Phase 3.7).
 
-This Turborepo has some additional tools already setup for you:
+## Cost
 
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
+Identical services at scale-to-zero + Cloud Build free tier + Cloudflare free plan +
+OpenRouter (cents per call on DeepSeek models) → effectively ~$0/month.
 
-### Build
+## Notes / constraints
 
-To build all apps and packages, run the following command:
-
-```
-cd my-turborepo
-
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo build
-
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo build
-yarn dlx turbo build
-pnpm exec turbo build
-```
-
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-```
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo build --filter=docs
-
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo build --filter=docs
-yarn exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-```
-
-### Develop
-
-To develop all apps and packages, run the following command:
-
-```
-cd my-turborepo
-
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo dev
-
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo dev
-yarn exec turbo dev
-pnpm exec turbo dev
-```
-
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-```
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo dev --filter=web
-
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo dev --filter=web
-yarn exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-```
-cd my-turborepo
-
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo login
-
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo login
-yarn exec turbo login
-pnpm exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-```
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo link
-
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo link
-yarn exec turbo link
-pnpm exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+- Do **not** run `POST /template` or `POST /chat` casually — each OpenRouter call
+  consumes credits. Ask before hitting them.
+- Region policy: all GCP resources stay in `asia-south1` unless explicitly documented
+  otherwise in `deployment.md`.
