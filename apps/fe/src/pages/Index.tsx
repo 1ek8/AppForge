@@ -29,7 +29,7 @@ const Index = () => {
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
             <Code2 className="w-5 h-5 text-primary-foreground" />
           </div>
-          <span className="text-xl font-bold text-foreground">WebForge</span>
+          <span className="text-xl font-bold text-foreground">AppForge</span>
         </div>
       </header>
 

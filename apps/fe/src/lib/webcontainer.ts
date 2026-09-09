@@ -16,7 +16,21 @@ export async function getWebContainer(): Promise<WebContainer> {
   return bootPromise;
 }
 
-/** @type {import('@webcontainer/api').FileSystemTree} */
+export async function resetWebContainer(): Promise<void> {
+  if (webcontainerInstance) {
+    try {
+      await webcontainerInstance.teardown();
+    } catch (error) {
+      console.warn('Webcontainer teardown failed:', error);
+    }
+    webcontainerInstance = null;
+  }
+  bootPromise = null;
+}
+
+type WCFileSystemTree = FileSystemTree;
+type WCNode = { directory: WCFileSystemTree } | { file: { contents: string } };
+
 export function fileListToWebContainerFS(
   files: Array<{ filePath: string, content: string}>
 ): FileSystemTree {
@@ -24,14 +38,14 @@ export function fileListToWebContainerFS(
 
   for (const { filePath, content } of files) {
     const parts = filePath.split('/');
-    let current: any = tree;
+    let current: Record<string, WCNode> = tree;
 
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
       if (!current[part]) {
         current[part] = { directory: {} };
       }
-      current = current[part].directory;
+      current = (current[part] as { directory: Record<string, WCNode> }).directory;
     }
 
     current[parts[parts.length - 1]] = {

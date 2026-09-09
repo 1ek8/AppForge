@@ -36,8 +36,9 @@ const Builder = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const { instance, serverUrl, status, events, mountFiles, startDevServer, writeFile } = useWebContainer();
-  const initCalled = useRef(false);
+  const { instance, serverUrl, status, events, mountFiles, startDevServer, writeFile, reset } = useWebContainer();
+  const [attempt, setAttempt] = useState(0);
+  const abortRef = useRef<AbortController | null>(null);
   const writtenFileContents = useRef(new Map<string, string>());
   const ledgeredFiles = useRef(new Set<string>());
   const processedEvents = useRef(0);
@@ -76,12 +77,13 @@ const Builder = () => {
   }, [status, serverUrl]);
 
   useEffect(() => {
-    if(!instance || initCalled.current){
-      console.error(`Waiting for webcontainer instance`);
+    if(!instance){
       return;
     }
 
-    initCalled.current = true;
+    const abort = new AbortController();
+    abortRef.current = abort;
+    let mounted = true;
 
     const init = async () => {
       const parser = new StreamParser();
@@ -94,7 +96,7 @@ const Builder = () => {
 
           const templateResponse = await axios.post(`${BACKEND_URL}/template`, {
             prompt
-          });
+          }, { signal: abort.signal });
 
           const { classification, userPrompt, templateLength, prompts } = templateResponse.data;
 
@@ -110,6 +112,8 @@ const Builder = () => {
             parsedSteps = parsedResult.steps;
             parsedFiles = parsedResult.files;
           }
+
+          if (!mounted || abort.signal.aborted) return;
 
           updatePhase('templating', {
             status: 'done',
@@ -144,6 +148,7 @@ const Builder = () => {
                               .map(f => ({ filePath: f.filePath, content: f.content }));
 
           await mountFiles(filesToMount);
+          if (!mounted || abort.signal.aborted) return;
 
           filesToMount.forEach(f => writtenFileContents.current.set(f.filePath, f.content));
 
@@ -162,7 +167,8 @@ const Builder = () => {
               userPrompt,
               templateLength,
               prompts
-            })
+            }),
+            signal: abort.signal
           });
 
           if(!codeResponse.ok){
@@ -177,6 +183,8 @@ const Builder = () => {
           }
 
           while(true){
+            if (abort.signal.aborted || !mounted) break;
+
             const {done, value} = await reader.read();
 
             if(done) {
@@ -193,6 +201,8 @@ const Builder = () => {
               openAction,
               completedActions
             } = parser.parseChunk(chunk);
+
+            if (!mounted || abort.signal.aborted) break;
 
             setSteps(parsedSteps);
             setFiles(parsedFiles);
@@ -214,6 +224,7 @@ const Builder = () => {
               if(file.type === 'file' && file.filePath && file.content !== undefined && writtenFileContents.current.get(file.filePath) !== file.content){
                 writtenFileContents.current.set(file.filePath, file.content);
                 await writeFile(file.filePath, file.content);
+                if (!mounted || abort.signal.aborted) return;
               }
 
               if(!ledgeredFiles.current.has(file.filePath)){
@@ -253,6 +264,7 @@ const Builder = () => {
             }
           }
         } catch (error) {
+            if (abort.signal.aborted || !mounted) return;
             const message = error instanceof Error ? error.message : 'Unknown error';
             console.log(`Failed to fetch template for prompt: ${prompt}, got the following error\n${error}`);
             setError(message);
@@ -264,9 +276,36 @@ const Builder = () => {
     };
 
     init();
-  }, [prompt, instance, mountFiles, startDevServer, writeFile]);
+
+    return () => {
+      mounted = false;
+      abort.abort();
+      abortRef.current = null;
+    };
+  }, [prompt, instance, mountFiles, startDevServer, writeFile, attempt]);
 
   const selectedFileContent = selectedFile ? fileContents.get(selectedFile) : null;
+
+  const handleRetry = async () => {
+    setError(null);
+    setIsLoading(true);
+    setSteps([]);
+    setFiles([]);
+    setFileTree([]);
+    setFileContents(new Map());
+    setSelectedFile(null);
+    writtenFileContents.current.clear();
+    ledgeredFiles.current.clear();
+    processedEvents.current = 0;
+    setPhases([
+      createPhase('templating'),
+      createPhase('building'),
+      createPhase('running'),
+    ]);
+    abortRef.current?.abort();
+    await reset();
+    setAttempt((a) => a + 1);
+  };
 
   return (
     <div className="h-screen flex flex-col bg-background">
@@ -285,7 +324,7 @@ const Builder = () => {
           <div className="w-6 h-6 rounded-md bg-primary flex items-center justify-center">
             <Code2 className="w-4 h-4 text-primary-foreground" />
           </div>
-          <span className="font-semibold text-foreground">WebForge</span>
+          <span className="font-semibold text-foreground">AppForge</span>
         </div>
         <div className="flex-1 mx-4">
           <div className="bg-card border border-border rounded-lg px-4 py-2 text-sm text-muted-foreground truncate max-w-2xl">
@@ -298,7 +337,7 @@ const Builder = () => {
       <div className="flex-1 flex overflow-hidden">
         {/* Steps Pane - 30% */}
         <div className="w-[30%] border-r border-border overflow-hidden flex flex-col">
-          <StepsPane phases={phases} error={error} />
+          <StepsPane phases={phases} error={error} onRetry={handleRetry} />
         </div>
 
         {/* File Explorer - 25% */}
@@ -315,8 +354,6 @@ const Builder = () => {
           <PreviewPane
             selectedFile={selectedFile}
             fileContent={selectedFileContent}
-            files = {files}
-            steps = {steps}
             serverUrl = {serverUrl}
             webContainerStatus = {status}
           />

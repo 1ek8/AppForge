@@ -1,4 +1,12 @@
-import { FileNode, FileNodeMap } from "@/lib/types";
+import { FileNode } from "@/lib/types";
+
+interface FileNodeMap {
+  name: string;
+  type: 'file' | 'folder';
+  path: string;
+  content?: string;
+  children?: { [key: string]: FileNodeMap };
+}
 
 export function buildFileTree(files: {filePath: string, content: string}[]): FileNode[] {
     const root: { [key: string]: FileNodeMap} = {};
@@ -23,7 +31,7 @@ export function buildFileTree(files: {filePath: string, content: string}[]): Fil
             }
 
             if(!isFile && current[part]) {
-                current = current[part].children as any;
+                current = current[part].children!;
             }
         })
     });

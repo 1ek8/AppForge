@@ -1,8 +1,39 @@
 import express from "express";
 import cors from "cors";
+import type { Request } from "express";
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const models: string[] = ['deepseek/deepseek-v4-flash-0731', 'cohere/north-mini-code:free', 'deepseek/deepseek-v3.2'];
+
+const MAX_PROMPT_LENGTH = 4000;
+const RATE_LIMIT = { windowMs: 60_000, max: 20 };
+const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+
+function clientKey(req: Request): string {
+  const cf = req.headers['cf-connecting-ip'];
+  if (typeof cf === 'string' && cf) return cf;
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded) return forwarded.split(',')[0].trim();
+  return req.ip || 'unknown';
+}
+
+function isRateLimited(req: Request): boolean {
+  if (rateBuckets.size > 10_000) {
+    const now = Date.now();
+    for (const [key, bucket] of rateBuckets) {
+      if (bucket.resetAt <= now) rateBuckets.delete(key);
+    }
+  }
+  const key = clientKey(req);
+  const now = Date.now();
+  const bucket = rateBuckets.get(key);
+  if (!bucket || bucket.resetAt <= now) {
+    rateBuckets.set(key, { count: 1, resetAt: now + RATE_LIMIT.windowMs });
+    return false;
+  }
+  bucket.count += 1;
+  return bucket.count > RATE_LIMIT.max;
+}
 
 import { OpenRouter } from '@openrouter/sdk';
 import { getSystemPrompt } from './prompts/systemPrompt.ts';
@@ -16,7 +47,8 @@ const openRouter = new OpenRouter({
 });
 
 const app = express();
-app.use(express.json());
+app.set('trust proxy', true);
+app.use(express.json({ limit: '256kb' }));
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST'],
@@ -35,14 +67,24 @@ app.use((req, res, next) => {
 
 app.post("/template", async (req, res) => {
 
+  if (isRateLimited(req)) {
+    res.status(429).json({ error: "Too many requests. Please try again shortly." });
+    return;
+  }
+
   try {
     
     const { prompt } = req.body;
 
-    if(!prompt) {
+    if (typeof prompt !== "string" || prompt.trim().length === 0) {
       res.status(400).json({
         error: "Prompt needs to be passed properly as value to the prompt field in JSON"
       });
+      return;
+    }
+
+    if (prompt.length > MAX_PROMPT_LENGTH) {
+      res.status(400).json({ error: `Prompt exceeds ${MAX_PROMPT_LENGTH} characters` });
       return;
     }
 
@@ -65,29 +107,34 @@ app.post("/template", async (req, res) => {
     });
 
   } catch (error) {
-
-    res.status(500).json({ error: "Failed" });
-
+    console.error("Template endpoint error:", error);
+    res.status(500).json({ error: "Failed to generate template" });
   }
 
 })
 
 app.post('/chat', async(req, res) => {
 
-  try {
+  if (isRateLimited(req)) {
+    res.status(429).json({ error: "Too many requests. Please try again shortly." });
+    return;
+  }
 
-    if(!req.body) {
-      return res.status(400).json({error: "Request body not received"});
-    }
+  try {
 
     const { userPrompt, templateLength, prompts } = req.body;
 
-    if (!userPrompt) {
+    if (typeof userPrompt !== "string" || userPrompt.trim().length === 0) {
       res.status(400).json({ error: "Prompt required" });
       return;
     }
 
-    if (!prompts || templateLength === 0) {
+    if (userPrompt.length > MAX_PROMPT_LENGTH) {
+      res.status(400).json({ error: `Prompt exceeds ${MAX_PROMPT_LENGTH} characters` });
+      return;
+    }
+
+    if (!Array.isArray(prompts) || prompts.length === 0 || templateLength === 0) {
       res.status(400).json({ error: "templates array required" });
       return;
     }
@@ -105,15 +152,12 @@ app.post('/chat', async(req, res) => {
 
     });
 
-    const selectedModel = result.getToolCalls;
-    console.log(`Selected Model : ${selectedModel}`);
-
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
     for await (const delta of result.getTextStream()) {
-      process.stdout.write(delta);
+      if (res.writableEnded) break;
       res.write(delta);
     }
 
@@ -121,7 +165,12 @@ app.post('/chat', async(req, res) => {
 
   } catch (error) {
       console.error("Chat endpoint error:", error);
-      res.end();
+      if (res.headersSent) {
+        res.write("\n\n[appforge-stream-error]\n");
+        res.end();
+        return;
+      }
+      res.status(500).json({ error: "Failed to generate response" });
   }
 
 })

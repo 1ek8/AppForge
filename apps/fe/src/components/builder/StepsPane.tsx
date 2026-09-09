@@ -8,13 +8,16 @@ import {
   Circle,
   FileCode,
   Loader2,
+  RotateCcw,
   Terminal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 interface StepsPaneProps {
   phases: Phase[];
   error: string | null;
+  onRetry?: () => void;
 }
 
 interface PhaseMeta {
@@ -49,7 +52,7 @@ const PHASE_META: PhaseMeta[] = [
   },
 ];
 
-const StepsPane = ({ phases, error }: StepsPaneProps) => {
+const StepsPane = ({ phases, error, onRetry }: StepsPaneProps) => {
   const [expanded, setExpanded] = useState<Record<PhaseKey, boolean>>({
     templating: false,
     building: false,
@@ -77,7 +80,21 @@ const StepsPane = ({ phases, error }: StepsPaneProps) => {
         {error && (
           <div className="bg-destructive/10 text-destructive px-4 py-3 rounded-lg mb-4">
             <p className="font-medium">Error</p>
-            <p className="text-sm">{error}</p>
+            <div className="mt-2 flex items-start justify-between gap-3">
+              <p className="text-sm break-words">{error}</p>
+              {onRetry && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={onRetry}
+                  className="shrink-0 gap-1.5"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Retry
+                </Button>
+              )}
+            </div>
           </div>
         )}
 

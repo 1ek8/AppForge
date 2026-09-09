@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { WebContainer } from '@webcontainer/api';
-import { fileListToWebContainerFS, getWebContainer } from '../lib/webcontainer';
-import { WriteStream } from 'fs';
+import { fileListToWebContainerFS, getWebContainer, resetWebContainer } from '../lib/webcontainer';
 
 export type WebContainerStatus =
   | 'idle'
@@ -27,6 +26,7 @@ export interface UseWebContainerReturn {
   mountFiles: (files: Array<{ filePath: string; content: string }>) => Promise<void>;
   startDevServer: () => Promise<void>;
   writeFile: (filePath: string, content: string) => Promise<void>;
+  reset: () => Promise<void>;
 }
 
 export function useWebContainer(): UseWebContainerReturn {
@@ -159,5 +159,25 @@ export function useWebContainer(): UseWebContainerReturn {
     [instance]
   );
 
-  return { instance, serverUrl, status, events, mountFiles, startDevServer, writeFile };
+  const reset = useCallback(async () => {
+    await resetWebContainer();
+    setInstance(null);
+    setServerUrl(null);
+    setEvents([]);
+    setStatus('booting');
+    eventIdRef.current = 0;
+    serverReadyRegistered.current = false;
+
+    try {
+      const container = await getWebContainer();
+      setInstance(container);
+      setStatus('idle');
+    } catch (err) {
+      console.error('Webcontainer re-boot failed:', err);
+      setStatus('error');
+      pushEvent('Booting WebContainer', 'error', 'WebContainer failed to reboot. Try reloading the page.');
+    }
+  }, [pushEvent]);
+
+  return { instance, serverUrl, status, events, mountFiles, startDevServer, writeFile, reset };
 }

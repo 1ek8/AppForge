@@ -1,16 +1,13 @@
 import { Code, Eye, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import Editor from "@monaco-editor/react";
 import { useWebContainer, WebContainerStatus } from "@/hooks/useWebContainer";
-import { ParsedFile, Step } from "@/lib/types";
 
 interface PreviewPaneProps {
-  files: ParsedFile[];
-  steps: Step[];
-  fileContent: string;
   selectedFile: string | null;
+  fileContent: string;
   serverUrl: string | null;
   webContainerStatus: WebContainerStatus;
 }
@@ -35,76 +32,13 @@ const getLanguage = (filename: string | null): string => {
   return 'plaintext';
 };
 
-const PreviewPane = ({ selectedFile, fileContent, files, steps, serverUrl, webContainerStatus }: PreviewPaneProps) => {
+const PreviewPane = ({ selectedFile, fileContent, serverUrl, webContainerStatus }: PreviewPaneProps) => {
   const [activeTab, setActiveTab] = useState<"preview" | "code">("code");
 
-  //count no. of steps executed so far while preventing infinite loops
-  const processedSteps = useRef(new Set<number>());
-
-  // useEffect(() => {
-  //   if (!instance) return;
-
-  //   const runSteps = async () => {
-  //     for (const step of steps) {
-  //       if (step.status === 'completed' && !processedSteps.current.has(step.id)) {
-  //         processedSteps.current.add(step.id);
-          
-  //         if (step.type === 'file' && step.filePath) {
-  //           const content = step.content || "";
-  //           const pathParts = step.filePath.split('/');
-            
-  //           // Create nested directories if they exist
-  //           if (pathParts.length > 1) {
-  //             const dir = pathParts.slice(0, -1).join('/');
-  //             try {
-  //               await instance.fs.mkdir(dir, { recursive: true });
-  //             } catch (error) {
-  //               // Safely ignore if directory already exists
-  //             }
-  //           }
-  //           // Write the file into the WebContainer instance
-  //           try {
-  //             await instance.fs.writeFile(step.filePath, content);
-  //           } catch (error) {
-  //             console.error('Error writing file', step.filePath, error);
-  //           }
-  //         } else if (step.type === 'shell') {
-  //           const cmd = step.command || "";
-  //           try {
-  //             const process = await instance.spawn('jsh', ['-c', cmd]);
-  //             process.output.pipeTo(new WritableStream({
-  //               write(data) {
-  //                 console.log('WebContainer Shell:', data);
-  //               }
-  //             }));
-              
-  //             // Only await completion if it's an installation command
-  //             // Let dev servers (npm run dev / start) run in the background
-  //             if (!cmd.includes('dev') && !cmd.includes('start')) {
-  //               await process.exit;
-  //             }
-  //             else {
-  //               process.exit.then((code) => {
-  //                 if(code != 0) {
-  //                   console.error(`Process exited with code ${code}`);
-  //                 }
-  //               });
-  //             }
-  //           } catch (error) {
-  //             console.error('Error running command', cmd, error);
-  //           }
-  //         }
-  //       }
-  //     }
-  //   };
-
-  //   runSteps();
-  //     }, [instance, steps]);
-
-  return (
+return (
     <div className="h-full flex flex-col bg-card">
       {/* Header with tabs */}
-      <div className="p-3 bo  rder-b border-border flex items-center justify-between shrink-0">
+      <div className="p-3 border-b border-border flex items-center justify-between shrink-0">
         <div className="flex items-center gap-1 bg-muted/30 p-1 rounded-lg">
           <Button
             variant="ghost"
@@ -139,7 +73,7 @@ const PreviewPane = ({ selectedFile, fileContent, files, steps, serverUrl, webCo
         )}
       </div>
 
-      {/* Content area - placeholder for Monaco Editor */}
+      {/* Content area: Monaco editor or live preview */}
       <div className="flex-1 overflow-hidden">
         {activeTab === "code" ? (
           <Editor
