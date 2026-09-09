@@ -7,9 +7,10 @@ import { useWebContainer, WebContainerStatus } from "@/hooks/useWebContainer";
 
 interface PreviewPaneProps {
   selectedFile: string | null;
-  fileContent: string;
+  fileContent: string | null;
   serverUrl: string | null;
   webContainerStatus: WebContainerStatus;
+  onEditFile?: (filePath: string, content: string) => void;
 }
 
 const STATUS_MESSAGES: Partial<Record<WebContainerStatus, string>> = {
@@ -32,8 +33,14 @@ const getLanguage = (filename: string | null): string => {
   return 'plaintext';
 };
 
-const PreviewPane = ({ selectedFile, fileContent, serverUrl, webContainerStatus }: PreviewPaneProps) => {
+const PreviewPane = ({ selectedFile, fileContent, serverUrl, webContainerStatus, onEditFile }: PreviewPaneProps) => {
   const [activeTab, setActiveTab] = useState<"preview" | "code">("code");
+
+  const handleEditorChange = (value: string | undefined) => {
+    if (onEditFile && selectedFile) {
+      onEditFile(selectedFile, value ?? "");
+    }
+  };
 
 return (
     <div className="h-full flex flex-col bg-card">
@@ -76,23 +83,30 @@ return (
       {/* Content area: Monaco editor or live preview */}
       <div className="flex-1 overflow-hidden">
         {activeTab === "code" ? (
-          <Editor
-            height="100%"
-            language={getLanguage(selectedFile)}
-            value={fileContent}
-            theme="vs-dark"
-            options={
-              {
-                readOnly: true,
-                minimap: { enabled: false },
-                fontSize: 14,
-                lineNumbers: 'on',
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-                wordWrap: 'on'
+          selectedFile ? (
+            <Editor
+              height="100%"
+              language={getLanguage(selectedFile)}
+              value={fileContent ?? ""}
+              onChange={handleEditorChange}
+              theme="vs-dark"
+              options={
+                {
+                  readOnly: false,
+                  minimap: { enabled: false },
+                  fontSize: 14,
+                  lineNumbers: 'on',
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  wordWrap: 'on'
+                }
               }
-            }
-          />
+            />
+          ) : (
+            <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+              Select a file to view and edit its contents.
+            </div>
+          )
           ) : webContainerStatus === 'ready' && serverUrl ? (
             <iframe
               src={serverUrl}

@@ -6,6 +6,8 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const models: string[] = ['deepseek/deepseek-v4-flash-0731', 'cohere/north-mini-code:free', 'deepseek/deepseek-v3.2'];
 
 const MAX_PROMPT_LENGTH = 4000;
+const MAX_CONTEXT_LENGTH = 250_000;
+const MAX_USER_CHANGES_LENGTH = 100_000;
 const RATE_LIMIT = { windowMs: 60_000, max: 20 };
 const rateBuckets = new Map<string, { count: number; resetAt: number }>();
 
@@ -122,7 +124,7 @@ app.post('/chat', async(req, res) => {
 
   try {
 
-    const { userPrompt, templateLength, prompts } = req.body;
+    const { userPrompt, prompts, context, userChanges } = req.body;
 
     if (typeof userPrompt !== "string" || userPrompt.trim().length === 0) {
       res.status(400).json({ error: "Prompt required" });
@@ -134,15 +136,26 @@ app.post('/chat', async(req, res) => {
       return;
     }
 
-    if (!Array.isArray(prompts) || prompts.length === 0 || templateLength === 0) {
-      res.status(400).json({ error: "templates array required" });
+    if ((!Array.isArray(prompts) || prompts.length === 0) && !context) {
+      res.status(400).json({ error: "templates array or project context required" });
       return;
     }
-    
-    const messages = [
-      { role: 'system' as const, content: getSystemPrompt() },
-      ...prompts.map((p:string) => ({ role: 'system' as const, content: p })),
-      { role: 'user' as const, content: userPrompt }
+
+    if (context !== undefined && (typeof context !== "string" || context.length > MAX_CONTEXT_LENGTH)) {
+      res.status(400).json({ error: `Project context exceeds ${MAX_CONTEXT_LENGTH} characters` });
+      return;
+    }
+
+    if (userChanges !== undefined && (typeof userChanges !== "string" || userChanges.length > MAX_USER_CHANGES_LENGTH)) {
+      res.status(400).json({ error: `User modifications exceed ${MAX_USER_CHANGES_LENGTH} characters` });
+      return;
+    }
+
+    const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
+      { role: 'system', content: getSystemPrompt() },
+      ...(Array.isArray(prompts) ? prompts.map((p: string) => ({ role: 'system' as const, content: p })) : []),
+      ...(context ? [{ role: 'system' as const, content: context }] : []),
+      { role: 'user', content: userChanges ? `${userChanges}\n\n${userPrompt}` : userPrompt }
     ];
 
     const result = await openRouter.callModel({
