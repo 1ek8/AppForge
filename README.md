@@ -14,10 +14,13 @@ file tree, and running preview — no third-party hosting needed for the generat
 - **Backend** — `apps/api`: Express 5 on Bun. Endpoints:
   - `POST /template` — classifies a prompt and returns a project template (non-streamed).
   - `POST /chat` — streams a full multi-file project generated from the prompt.
+  - `GET /`, `POST /`, `PUT /`, `DELETE /` — saved projects CRUD (requires `Authorization: Bearer <Clerk JWT>`).
   - `GET /` — health (`{"status":"ok"}`).
   - OpenRouter-backed LLM calls (secret injected at deploy time, never committed).
 - **Monorepo** — Turborepo + Bun workspaces; shared `packages/ui`, `packages/db`,
   `packages/typescript-config`, `packages/eslint-config`.
+- **Auth + Storage** — Clerk (Google/GitHub OAuth, hosted pages) for user authentication;
+  Neon Postgres (free tier) via Prisma 7 (`packages/db`) for saved projects.
 
 ## Repo layout
 
@@ -40,8 +43,8 @@ deployment.md  GCP deployment plan + gotchas (gitignored, not in git)
 Requirements: Node >= 18, `bun` 1.x.
 
 1. Set env files (copy from `.env.example`):
-   - `apps/api/.env`: `OPENROUTER_API_KEY=...`
-   - `apps/fe/.env`: `VITE_BACKEND_URL=http://localhost:3000`
+   - `apps/api/.env`: `OPENROUTER_API_KEY=...`, `CLERK_SECRET_KEY=...`, `DATABASE_URL=postgres://...` (Neon)
+   - `apps/fe/.env`: `VITE_BACKEND_URL=http://localhost:3000`, `VITE_CLERK_PUBLISHABLE_KEY=pk_...`
 2. Install + run:
    ```sh
    bun install
@@ -65,10 +68,14 @@ bun run test         # turbo run test
 - **Continuous deployment**: a push to `main` fires Cloud Build triggers `api-deploy`
   and `fe-deploy`, which rebuild + redeploy both services automatically.
   (Cloud Build SA must be a user-managed SA; see `deployment.md` gotchas.)
-- **Secrets**: `OPENROUTER_API_KEY` lives in Secret Manager
-  (`openrouter_api_key`, asia-south1) and is injected via `--set-secrets`.
+- **Secrets**: `OPENROUTER_API_KEY`, `CLERK_SECRET_KEY` and the Neon `DATABASE_URL`
+  live in Secret Manager (`openrouter_api_key`, `clerk_secret_key`, `neon_database_url`,
+  asia-south1) and are injected via `--set-secrets`.
 - **Custom domain**: Cloudflare DNS + a Cloudflare Worker reverse-proxy forwards
   the branded subdomains to the Cloud Run services (see `deployment.md` Phase 3.6).
+- **Auth**: the FE bakes the public `VITE_CLERK_PUBLISHABLE_KEY` at build time
+  (build arg in `cloudbuild/fe.yaml`); users sign in on Clerk hosted pages and the
+  API verifies each request's session JWT with `@clerk/backend`.
 
 ### Live URLs
 

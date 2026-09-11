@@ -50,16 +50,19 @@ const openRouter = new OpenRouter({
 
 const app = express();
 app.set('trust proxy', true);
-app.use(express.json({ limit: '256kb' }));
+app.use(express.json({ limit: '2mb' }));
 app.use(cors({
   origin: '*',
-  methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 app.get("/", (_req, res) => {
   res.json({ status: "ok" });
 });
+
+import { projectsRouter } from './projects.ts';
+app.use('/projects', projectsRouter);
 
 app.use((req, res, next) => {
   const bodySize = req.body != null ? JSON.stringify(req.body).length : 0;

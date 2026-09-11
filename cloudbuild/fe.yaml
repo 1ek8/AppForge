@@ -1,5 +1,6 @@
 substitutions:
   _VITE_BACKEND_URL: https://appforge-api.byaniket.site
+  _VITE_CLERK_PUBLISHABLE_KEY: pk_test_cG9ldGljLWdvYmJsZXItNjQ3My5jbGVyay5hY2NvdW50cy5kZXYk
 options:
   logging: CLOUD_LOGGING_ONLY
 steps:
@@ -10,6 +11,8 @@ steps:
       - "apps/fe/Dockerfile"
       - "--build-arg"
       - "VITE_BACKEND_URL=${_VITE_BACKEND_URL}"
+      - "--build-arg"
+      - "VITE_CLERK_PUBLISHABLE_KEY=${_VITE_CLERK_PUBLISHABLE_KEY}"
       - "-t"
       - "asia-south1-docker.pkg.dev/${PROJECT_ID}/appforge/appforge-fe:${SHORT_SHA}"
       - "."

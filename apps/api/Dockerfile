@@ -7,6 +7,8 @@ COPY packages/ packages/
 
 RUN bun install --frozen-lockfile
 
+RUN cd packages/db && DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder" bunx prisma generate
+
 WORKDIR /app/apps/api
 RUN bun run build
 

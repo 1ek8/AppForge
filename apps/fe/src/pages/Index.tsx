@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Sparkles, Zap, Code2, Layers } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/clerk-react";
+import { FolderOpen, Sparkles, Zap, Code2, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { HAS_CLERK } from "@/lib/clerk";
 
 const Index = () => {
   const [prompt, setPrompt] = useState("");
@@ -24,13 +26,32 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
-      <header className="border-b border-border px-6 py-4">
+      <header className="border-b border-border px-6 py-4 flex items-center gap-2">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
             <Code2 className="w-5 h-5 text-primary-foreground" />
           </div>
           <span className="text-xl font-bold text-foreground">AppForge</span>
         </div>
+        {HAS_CLERK && (
+          <div className="ml-auto flex items-center gap-3">
+            <SignedIn>
+              <Link
+                to="/projects"
+                className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+              >
+                <FolderOpen className="w-4 h-4" />
+                My Projects
+              </Link>
+              <UserButton afterSignOutUrl="/" />
+            </SignedIn>
+            <SignedOut>
+              <SignInButton mode="modal">
+                <Button variant="outline" size="sm">Sign in</Button>
+              </SignInButton>
+            </SignedOut>
+          </div>
+        )}
       </header>
 
       {/* Hero Section */}

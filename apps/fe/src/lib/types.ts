@@ -40,3 +40,15 @@ export interface FileNode {
   content?: string;
   children?: FileNode[];
 }
+
+export interface ProjectFileRecord {
+  filePath: string;
+  content: string;
+}
+
+export interface SavedProject {
+  id: string;
+  name: string;
+  prompt: string;
+  files: ProjectFileRecord[];
+}

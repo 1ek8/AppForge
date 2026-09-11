@@ -1,19 +1,93 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ArrowLeft, Code2 } from "lucide-react";
+import { ArrowLeft, Code2, Loader2, Save } from "lucide-react";
+import { useAuth } from "@clerk/clerk-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import StepsPane from "@/components/builder/StepsPane";
 import FileExplorer from "@/components/builder/FileExplorer";
 import PreviewPane from "@/components/builder/PreviewPane";
 import ChatPanel, { ChatMessage } from "@/components/builder/ChatPanel";
 import axios from 'axios';
-import { FileNode, ParsedFile, Phase, PhaseKey, Step } from "@/lib/types";
+import { FileNode, ParsedFile, Phase, PhaseKey, SavedProject, Step } from "@/lib/types";
 import { ParseResult, StreamParser } from "@/utils/streamParser";
 import { buildFileTree } from "@/utils/fileTreeBuilder";
 import { buildProjectContext, buildUserChanges } from "@/utils/projectContext";
 import { useWebContainer } from "@/hooks/useWebContainer";
+import { HAS_CLERK } from "@/lib/clerk";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+
+interface SaveButtonProps {
+  fileContentsRef: React.RefObject<Map<string, string>>;
+  savedProject: SavedProject | undefined;
+  prompt: string;
+  projectId: string | null;
+  onSaved: (id: string) => void;
+}
+
+const SaveButton = ({ fileContentsRef, savedProject, prompt, projectId, onSaved }: SaveButtonProps) => {
+  const { getToken, isSignedIn } = useAuth();
+  const navigate = useNavigate();
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!isSignedIn) {
+      toast("Sign in to save your project");
+      navigate("/sign-in");
+      return;
+    }
+
+    const files = Array.from(fileContentsRef.current.entries())
+      .filter(([, content]) => content !== undefined)
+      .map(([filePath, content]) => ({ filePath, content }));
+
+    if (files.length === 0) {
+      toast.error("Nothing to save yet");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const token = await getToken();
+      const body = JSON.stringify({
+        name: savedProject?.name ?? (prompt.slice(0, 120) || "Untitled App"),
+        prompt,
+        files,
+      });
+      const isUpdate = Boolean(projectId);
+      const res = await fetch(
+        `${BACKEND_URL}/projects${isUpdate ? `/${projectId}` : ""}`,
+        {
+          method: isUpdate ? "PUT" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body,
+        }
+      );
+      if (!res.ok) throw new Error("Failed to save project");
+      const data = await res.json();
+      if (data.project?.id) onSaved(data.project.id);
+      toast.success("Project saved");
+    } catch (err) {
+      console.error(err);
+      toast.error(err instanceof Error ? err.message : "Failed to save project");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (!isSignedIn) return null;
+
+  return (
+    <Button size="sm" onClick={handleSave} disabled={isSaving} className="gap-2 shrink-0">
+      {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+      {isSaving ? "Saving..." : projectId ? "Update" : "Save"}
+    </Button>
+  );
+};
 
 const createPhase = (key: PhaseKey): Phase => ({
   key,
@@ -28,6 +102,9 @@ const Builder = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const prompt = location.state?.prompt || "No prompt provided";
+  const savedProject = location.state?.project as SavedProject | undefined;
+
+  const [projectId, setProjectId] = useState<string | null>(savedProject?.id ?? null);
 
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [steps, setSteps] = useState<Step[]>([]);
@@ -198,6 +275,51 @@ const Builder = () => {
         try {
           setIsLoading(true);
 
+          if (savedProject?.files?.length) {
+            const loadedFiles: ParsedFile[] = savedProject.files
+              .filter((f) => f.filePath && f.content !== undefined)
+              .map((f) => ({ type: 'file', filePath: f.filePath, content: f.content }));
+
+            const loadedSteps: Step[] = loadedFiles.map((f, index) => ({
+              id: index,
+              title: `Load ${f.filePath}`,
+              description: `Loading file ${f.filePath}`,
+              status: 'completed',
+              type: 'file',
+              filePath: f.filePath,
+              content: f.content,
+            }));
+
+            setSteps(loadedSteps);
+            setFiles(loadedFiles);
+            setFileTree(buildFileTree(loadedFiles.map((f) => ({ filePath: f.filePath, content: f.content }))));
+
+            const contentMap = new Map<string, string>();
+            loadedFiles.forEach((f) => contentMap.set(f.filePath, f.content));
+            setFileContents(contentMap);
+
+            if (loadedFiles.length > 0) setSelectedFile(loadedFiles[0].filePath);
+            setProjectId(savedProject.id);
+
+            updatePhase('templating', {
+              status: 'done',
+              current: null,
+              summary: `${loadedFiles.length} files loaded`,
+              ledger: loadedFiles.map((f) => f.filePath),
+            });
+
+            const filesToMount = loadedFiles.map((f) => ({ filePath: f.filePath, content: f.content }));
+            await mountFiles(filesToMount);
+            if (!mounted || abort.signal.aborted) return;
+            filesToMount.forEach((f) => writtenFileContents.current.set(f.filePath, f.content));
+
+            updatePhase('building', { status: 'done', current: null, summary: 'Loaded from library', ledger: [] });
+
+            await startDevServer();
+            setIsLoading(false);
+            return;
+          }
+
           updatePhase('templating', { status: 'running', current: "Setting up project's template", error: null });
 
           // Template processing
@@ -349,7 +471,7 @@ const Builder = () => {
       abort.abort();
       abortRef.current = null;
     };
-  }, [prompt, instance, mountFiles, startDevServer, writeFile, attempt, applyParsedChunk, updatePhase]);
+  }, [prompt, savedProject, instance, mountFiles, startDevServer, writeFile, attempt, applyParsedChunk, updatePhase]);
 
   const selectedFileContent = selectedFile ? fileContents.get(selectedFile) : null;
 
@@ -526,6 +648,15 @@ const Builder = () => {
             {prompt}
           </div>
         </div>
+        {HAS_CLERK && (
+          <SaveButton
+            fileContentsRef={fileContentsRef}
+            savedProject={savedProject}
+            prompt={prompt}
+            projectId={projectId}
+            onSaved={setProjectId}
+          />
+        )}
       </header>
 
       {/* Main Content - Three Pane Layout */}
