@@ -62,7 +62,8 @@ app.get("/", (_req, res) => {
 });
 
 app.use((req, res, next) => {
-  console.log(`${req.method} ${req.path}`, req.body);
+  const bodySize = req.body != null ? JSON.stringify(req.body).length : 0;
+  console.log(`${req.method} ${req.path} bodyBytes=${bodySize}`);
   next();
 });
 
@@ -151,17 +152,28 @@ app.post('/chat', async(req, res) => {
       return;
     }
 
+    const GENERATION_INSTRUCTIONS = `<generation_instructions>
+The starter project files described in the previous messages ALREADY EXIST on disk and are running on the dev server.
+- Emit <boltAction type="file"> actions ONLY for files you CREATE or MODIFY in this response.
+- Do not re-emit unchanged starter files.
+- When modifying a file, include its COMPLETE, updated content.
+- Keep the response as short as possible while fully solving the request.
+</generation_instructions>`;
+
     const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
       { role: 'system', content: getSystemPrompt() },
       ...(Array.isArray(prompts) ? prompts.map((p: string) => ({ role: 'system' as const, content: p })) : []),
       ...(context ? [{ role: 'system' as const, content: context }] : []),
+      { role: 'system', content: GENERATION_INSTRUCTIONS },
       { role: 'user', content: userChanges ? `${userChanges}\n\n${userPrompt}` : userPrompt }
     ];
 
     const result = await openRouter.callModel({
       models: models,
   
-      input: messages
+      input: messages,
+
+      maxOutputTokens: 16000
 
     });
 
@@ -169,12 +181,25 @@ app.post('/chat', async(req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
+    let streamedChars = 0;
     for await (const delta of result.getTextStream()) {
       if (res.writableEnded) break;
+      streamedChars += delta.length;
       res.write(delta);
     }
 
     res.end();
+    console.log(`[chat] stream finished: ${streamedChars} chars`);
+
+    try {
+      const response = await result.getResponse();
+      const usage = response?.usage;
+      if (usage) {
+        console.log(`[chat] usage input=${usage.inputTokens} output=${usage.outputTokens} cached=${usage.inputTokensDetails?.cachedTokens ?? 0}`);
+      }
+    } catch (usageError) {
+      console.warn('[chat] failed to read usage', usageError);
+    }
 
   } catch (error) {
       console.error("Chat endpoint error:", error);

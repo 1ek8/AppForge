@@ -69,7 +69,6 @@ const Builder = () => {
     const {
       steps: parsedSteps,
       files: parsedFiles,
-      isComplete,
       openAction,
       completedActions
     } = result;
@@ -130,14 +129,6 @@ const Builder = () => {
       }
       return next;
     });
-
-    if (isComplete) {
-      updatePhase('building', {
-        status: 'done',
-        current: null,
-        summary: `${ledgeredFiles.current.size} files updated`
-      });
-    }
   }, [writeFile, updatePhase]);
 
   const handleMonacoEdit = (filePath: string, content: string) => {
@@ -299,13 +290,16 @@ const Builder = () => {
             throw new Error('No reader available');
           }
 
-          while(true){
+          let streamFinished = false;
+          let artifactClosed = false;
+
+          while(!streamFinished){
             if (abort.signal.aborted || !mounted) break;
 
             const {done, value} = await reader.read();
 
             if(done) {
-              setIsLoading(false);
+              streamFinished = true;
               break;
             }
 
@@ -313,15 +307,27 @@ const Builder = () => {
 
             const parsed = parser.parseChunk(chunk);
 
+            if (parsed.isComplete) artifactClosed = true;
+
             if (!mounted || abort.signal.aborted) break;
 
             await applyParsedChunk(parsed, abort.signal, () => mounted);
 
             if(!mounted || abort.signal.aborted) break;
+          }
 
-            if(parsed.isComplete) {
-              setIsLoading(false);
-              break;
+          if (!abort.signal.aborted && mounted && streamFinished) {
+            setIsLoading(false);
+            if (artifactClosed) {
+              updatePhase('building', {
+                status: 'done',
+                current: null,
+                summary: `${ledgeredFiles.current.size} files updated`
+              });
+            } else {
+              const message = 'The AI response ended before the app was fully generated. The last file may be incomplete — send a follow-up like "continue where you left off".';
+              setError(message);
+              updatePhase('building', { status: 'error', current: null, error: message });
             }
           }
         } catch (error) {
@@ -384,7 +390,8 @@ const Builder = () => {
 
     const parser = new StreamParser();
     let assistantText = '';
-    let earlyExit = false;
+    let artifactClosed = false;
+    let streamFinished = false;
 
     try {
       const projectContext = buildProjectContext(fileContentsRef.current);
@@ -427,7 +434,10 @@ const Builder = () => {
 
         const { done, value } = await reader.read();
 
-        if (done) break;
+        if (done) {
+          streamFinished = true;
+          break;
+        }
 
         const chunk = decoder.decode(value, { stream: true });
 
@@ -444,11 +454,21 @@ const Builder = () => {
 
         const parsed = parser.parseChunk(chunk);
 
+        if (parsed.isComplete) artifactClosed = true;
+
         if (abort.signal.aborted || !isMountedRef.current) break;
 
         await applyParsedChunk(parsed, abort.signal, () => isMountedRef.current);
+      }
 
-        if (parsed.isComplete) earlyExit = true;
+      if (streamFinished && !artifactClosed) {
+        const message = 'The AI response ended before finishing. The last file may be incomplete — send a follow-up like "continue where you left off".';
+        setMessages((prev) => {
+          const next = [...prev];
+          next[next.length - 1] = { role: 'assistant', content: `${assistantText}\n\n[${message}]` };
+          return next;
+        });
+        setError(message);
       }
     } catch (error) {
       if (abort.signal.aborted || !isMountedRef.current) return;
@@ -461,12 +481,20 @@ const Builder = () => {
         return next;
       });
     } finally {
-      if (!abort.signal.aborted && !earlyExit) {
-        updatePhase('building', {
-          status: 'done',
-          current: null,
-          summary: `${ledgeredFiles.current.size} files`
-        });
+      if (!abort.signal.aborted && streamFinished) {
+        if (artifactClosed) {
+          updatePhase('building', {
+            status: 'done',
+            current: null,
+            summary: `${ledgeredFiles.current.size} files updated`
+          });
+        } else {
+          updatePhase('building', {
+            status: 'error',
+            current: null,
+            error: 'The AI response ended before finishing.'
+          });
+        }
       }
       if (abortRef.current === abort) abortRef.current = null;
       setIsStreaming(false);
