@@ -98,7 +98,11 @@ const createPhase = (key: PhaseKey): Phase => ({
   error: null,
 });
 
-const Builder = () => {
+interface BuilderContentProps {
+  getToken: (() => Promise<string | null>) | null;
+}
+
+const BuilderContent = ({ getToken }: BuilderContentProps) => {
   const location = useLocation();
   const navigate = useNavigate();
   const prompt = location.state?.prompt || "No prompt provided";
@@ -127,6 +131,11 @@ const Builder = () => {
   const editTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const isMountedRef = useRef(true);
   const fileContentsRef = useRef(fileContents);
+  const getTokenRef = useRef(getToken);
+
+  useEffect(() => {
+    getTokenRef.current = getToken;
+  }, [getToken]);
 
   useEffect(() => {
     fileContentsRef.current = fileContents;
@@ -141,6 +150,16 @@ const Builder = () => {
   const updatePhase = useCallback((key: PhaseKey, patch: Partial<Phase>) => {
     setPhases((prev) => prev.map((p) => (p.key === key ? { ...p, ...patch } : p)));
   }, []);
+
+  const getAuthToken = async (): Promise<string | null> => {
+    if (!getTokenRef.current) return null;
+    try {
+      return await getTokenRef.current();
+    } catch (err) {
+      console.error('Failed to get auth token:', err);
+      return null;
+    }
+  };
 
   const applyParsedChunk = useCallback(async (result: ParseResult, signal: AbortSignal, alive: () => boolean) => {
     const {
@@ -322,11 +341,23 @@ const Builder = () => {
 
           updatePhase('templating', { status: 'running', current: "Setting up project's template", error: null });
 
+          const token = await getAuthToken();
+          if (!token) {
+            const message = 'Sign in to generate your app.';
+            setError(message);
+            setIsLoading(false);
+            updatePhase('templating', { status: 'error', current: null, error: message });
+            return;
+          }
+
           // Template processing
 
           const templateResponse = await axios.post(`${BACKEND_URL}/template`, {
             prompt
-          }, { signal: abort.signal });
+          }, {
+            signal: abort.signal,
+            headers: { Authorization: `Bearer ${token}` }
+          });
 
           const { classification, userPrompt, templateLength, prompts } = templateResponse.data;
 
@@ -391,7 +422,8 @@ const Builder = () => {
           const codeResponse = await fetch(`${BACKEND_URL}/chat`, {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/json'
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
             body: JSON.stringify({
               userPrompt,
@@ -527,10 +559,16 @@ const Builder = () => {
 
       updatePhase('building', { status: 'running', current: 'Applying changes...', error: null });
 
+      const token = await getAuthToken();
+      if (!token) {
+        throw new Error('Sign in to continue generating your app.');
+      }
+
       const response = await fetch(`${BACKEND_URL}/chat`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           userPrompt: text,
@@ -696,6 +734,18 @@ const Builder = () => {
       />
     </div>
   );
+};
+
+const AuthBuilder = () => {
+  const { getToken } = useAuth();
+  return <BuilderContent getToken={getToken} />;
+};
+
+const Builder = () => {
+  if (!HAS_CLERK) {
+    return <BuilderContent getToken={null} />;
+  }
+  return <AuthBuilder />;
 };
 
 export default Builder;

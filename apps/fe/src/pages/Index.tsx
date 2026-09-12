@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/clerk-react";
+import { SignedIn, SignedOut, SignInButton, UserButton, useAuth } from "@clerk/clerk-react";
 import { FolderOpen, Sparkles, Zap, Code2, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -89,14 +89,18 @@ const Index = () => {
                 <span className="text-sm text-muted">
                   Press Enter to generate
                 </span>
-                <Button
-                  onClick={handleSubmit}
-                  disabled={!prompt.trim()}
-                  className="gap-2"
-                >
-                  <Zap className="w-4 h-4" />
-                  Generate
-                </Button>
+                {HAS_CLERK ? (
+                  <GenerateGate prompt={prompt} onGenerate={handleSubmit} />
+                ) : (
+                  <Button
+                    onClick={handleSubmit}
+                    disabled={!prompt.trim()}
+                    className="gap-2"
+                  >
+                    <Zap className="w-4 h-4" />
+                    Generate
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -135,6 +139,37 @@ interface FeatureCardProps {
   title: string;
   description: string;
 }
+
+const GenerateGate = ({ prompt, onGenerate }: { prompt: string; onGenerate: () => void }) => {
+  const { isLoaded, isSignedIn } = useAuth();
+
+  if (!isLoaded) {
+    return (
+      <Button disabled className="gap-2">
+        <Zap className="w-4 h-4" />
+        Loading…
+      </Button>
+    );
+  }
+
+  if (!isSignedIn) {
+    return (
+      <SignInButton mode="modal">
+        <Button className="gap-2">
+          <Zap className="w-4 h-4" />
+          Sign in to generate
+        </Button>
+      </SignInButton>
+    );
+  }
+
+  return (
+    <Button onClick={onGenerate} disabled={!prompt.trim()} className="gap-2">
+      <Zap className="w-4 h-4" />
+      Generate
+    </Button>
+  );
+};
 
 const FeatureCard = ({ icon, title, description }: FeatureCardProps) => (
   <div className="bg-card border border-border rounded-xl p-6 text-left hover:border-primary/50 transition-colors">

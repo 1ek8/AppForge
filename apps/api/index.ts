@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
-import type { Request } from "express";
+import type { Request, Response } from "express";
+import { requireAuth } from "./auth.js";
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const models: string[] = ['deepseek/deepseek-v4-flash-0731', 'cohere/north-mini-code:free', 'deepseek/deepseek-v3.2'];
@@ -37,6 +38,28 @@ function isRateLimited(req: Request): boolean {
   return bucket.count > RATE_LIMIT.max;
 }
 
+const USER_RATE_LIMIT = { windowMs: 60_000, max: 15 };
+const userRateBuckets = new Map<string, { count: number; resetAt: number }>();
+
+function isUserRateLimited(res: Response): boolean {
+  const userId = res.locals.userId as string | undefined;
+  if (!userId) return true;
+  if (userRateBuckets.size > 10_000) {
+    const now = Date.now();
+    for (const [key, bucket] of userRateBuckets) {
+      if (bucket.resetAt <= now) userRateBuckets.delete(key);
+    }
+  }
+  const now = Date.now();
+  const bucket = userRateBuckets.get(userId);
+  if (!bucket || bucket.resetAt <= now) {
+    userRateBuckets.set(userId, { count: 1, resetAt: now + USER_RATE_LIMIT.windowMs });
+    return false;
+  }
+  bucket.count += 1;
+  return bucket.count > USER_RATE_LIMIT.max;
+}
+
 import { OpenRouter } from '@openrouter/sdk';
 import { getSystemPrompt } from './prompts/systemPrompt.ts';
 import { templatePrompt } from "./prompts/templatePrompt.ts";
@@ -71,9 +94,9 @@ app.use((req, res, next) => {
 });
 
 
-app.post("/template", async (req, res) => {
+app.post("/template", requireAuth, async (req, res) => {
 
-  if (isRateLimited(req)) {
+  if (isUserRateLimited(res) || isRateLimited(req)) {
     res.status(429).json({ error: "Too many requests. Please try again shortly." });
     return;
   }
@@ -119,9 +142,9 @@ app.post("/template", async (req, res) => {
 
 })
 
-app.post('/chat', async(req, res) => {
+app.post('/chat', requireAuth, async(req, res) => {
 
-  if (isRateLimited(req)) {
+  if (isUserRateLimited(res) || isRateLimited(req)) {
     res.status(429).json({ error: "Too many requests. Please try again shortly." });
     return;
   }
