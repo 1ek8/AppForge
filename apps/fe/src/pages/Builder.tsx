@@ -18,6 +18,15 @@ import { HAS_CLERK } from "@/lib/clerk";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
+const STREAM_ERROR_MARKER = '[appforge-stream-error]';
+
+function hasStreamErrorMarker(chunk: string, carry = ''): { detected: boolean; carry: string } {
+  const combined = carry + chunk;
+  const detected = combined.includes(STREAM_ERROR_MARKER);
+  const tail = combined.slice(-(STREAM_ERROR_MARKER.length - 1));
+  return { detected, carry: detected ? '' : tail };
+}
+
 interface SaveButtonProps {
   fileContentsRef: React.RefObject<Map<string, string>>;
   savedProject: SavedProject | undefined;
@@ -446,6 +455,8 @@ const BuilderContent = ({ getToken }: BuilderContentProps) => {
 
           let streamFinished = false;
           let artifactClosed = false;
+          let hasArtifact = false;
+          let streamErrorCarry = '';
 
           while(!streamFinished){
             if (abort.signal.aborted || !mounted) break;
@@ -459,9 +470,16 @@ const BuilderContent = ({ getToken }: BuilderContentProps) => {
 
             const chunk = decoder.decode(value, { stream: true });
 
+            const marker = hasStreamErrorMarker(chunk, streamErrorCarry);
+            streamErrorCarry = marker.carry;
+            if (marker.detected) {
+              throw new Error('Response interrupted on the server');
+            }
+
             const parsed = parser.parseChunk(chunk);
 
             if (parsed.isComplete) artifactClosed = true;
+            if (parsed.hasArtifact) hasArtifact = true;
 
             if (!mounted || abort.signal.aborted) break;
 
@@ -478,8 +496,12 @@ const BuilderContent = ({ getToken }: BuilderContentProps) => {
                 current: null,
                 summary: `${ledgeredFiles.current.size} files updated`
               });
-            } else {
+            } else if (hasArtifact) {
               const message = 'The AI response ended before the app was fully generated. The last file may be incomplete — send a follow-up like "continue where you left off".';
+              setError(message);
+              updatePhase('building', { status: 'error', current: null, error: message });
+            } else {
+              const message = 'The AI response did not include any project files. Please try again.';
               setError(message);
               updatePhase('building', { status: 'error', current: null, error: message });
             }
@@ -546,6 +568,8 @@ const BuilderContent = ({ getToken }: BuilderContentProps) => {
     let assistantText = '';
     let artifactClosed = false;
     let streamFinished = false;
+    let hasArtifact = false;
+    let streamErrorCarry = '';
 
     try {
       const projectContext = buildProjectContext(fileContentsRef.current);
@@ -601,7 +625,9 @@ const BuilderContent = ({ getToken }: BuilderContentProps) => {
 
         const chunk = decoder.decode(value, { stream: true });
 
-        if (chunk.includes('[appforge-stream-error]')) {
+        const marker = hasStreamErrorMarker(chunk, streamErrorCarry);
+        streamErrorCarry = marker.carry;
+        if (marker.detected) {
           throw new Error('Response interrupted on the server');
         }
 
@@ -615,13 +641,14 @@ const BuilderContent = ({ getToken }: BuilderContentProps) => {
         const parsed = parser.parseChunk(chunk);
 
         if (parsed.isComplete) artifactClosed = true;
+        if (parsed.hasArtifact) hasArtifact = true;
 
         if (abort.signal.aborted || !isMountedRef.current) break;
 
         await applyParsedChunk(parsed, abort.signal, () => isMountedRef.current);
       }
 
-      if (streamFinished && !artifactClosed) {
+      if (streamFinished && !artifactClosed && hasArtifact) {
         const message = 'The AI response ended before finishing. The last file may be incomplete — send a follow-up like "continue where you left off".';
         setMessages((prev) => {
           const next = [...prev];
@@ -648,11 +675,17 @@ const BuilderContent = ({ getToken }: BuilderContentProps) => {
             current: null,
             summary: `${ledgeredFiles.current.size} files updated`
           });
-        } else {
+        } else if (hasArtifact) {
           updatePhase('building', {
             status: 'error',
             current: null,
             error: 'The AI response ended before finishing.'
+          });
+        } else {
+          updatePhase('building', {
+            status: 'done',
+            current: null,
+            summary: `Reply received`
           });
         }
       }

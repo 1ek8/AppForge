@@ -15,6 +15,7 @@ export interface ParseResult {
   steps: Step[];
   files: ParsedFile[];
   isComplete: boolean;
+  hasArtifact: boolean;
   openAction: OpenAction | null;
   completedActions: CompletedAction[];
 }
@@ -59,6 +60,7 @@ export class StreamParser {
             steps: [...this.steps],
             files: Array.from(this.allFiles.values()),
             isComplete,
+            hasArtifact: this.currentArtifact !== null,
             openAction: this.trackOpenAction(),
             completedActions
         };
