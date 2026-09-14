@@ -1,6 +1,6 @@
 substitutions:
   _VITE_BACKEND_URL: https://appforge-api.byaniket.site
-  _VITE_CLERK_PUBLISHABLE_KEY: pk_test_cG9ldGljLWdvYmJsZXItNjQ3My5jbGVyay5hY2NvdW50cy5kZXYk
+  _VITE_CLERK_PUBLISHABLE_KEY: pk_live_Y2xlcmsuYXBwZm9yZ2UuYnlhbmlrZXQuc2l0ZSQ
 options:
   logging: CLOUD_LOGGING_ONLY
 steps:
