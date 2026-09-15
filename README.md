@@ -30,7 +30,7 @@ apps/
   fe/           React SPA + bun static server (Dockerfile, serve.ts)
 packages/
   ui/           shared UI components
-  db/           (schema/types stubs)
+  db/           Prisma 7 schema + types (Neon Postgres)
   typescript-config/ eslint-config/
 cloudbuild/
   api.yaml      Cloud Build steps: build+push image, gcloud run deploy appforge-api
