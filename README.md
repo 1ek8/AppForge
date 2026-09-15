@@ -14,8 +14,11 @@ file tree, and running preview — no third-party hosting needed for the generat
 - **Backend** — `apps/api`: Express 5 on Bun. Endpoints:
   - `POST /template` — classifies a prompt and returns a project template (non-streamed).
   - `POST /chat` — streams a full multi-file project generated from the prompt.
-  - `GET /`, `POST /`, `PUT /`, `DELETE /` — saved projects CRUD (requires `Authorization: Bearer <Clerk JWT>`).
+  - `GET /projects`, `POST /projects`, `GET /projects/:id`, `PUT /projects/:id`,
+    `DELETE /projects/:id` — saved projects CRUD (Prisma + Neon).
   - `GET /` — health (`{"status":"ok"}`).
+  - `POST /template`, `POST /chat`, and the `/projects` router all require
+    `Authorization: Bearer <Clerk JWT>`.
   - OpenRouter-backed LLM calls (secret injected at deploy time, never committed).
 - **Monorepo** — Turborepo + Bun workspaces; shared `packages/ui`, `packages/db`,
   `packages/typescript-config`, `packages/eslint-config`.
@@ -58,7 +61,7 @@ bun run build        # turbo run build
 bun run dev          # turbo run dev
 bun run lint         # turbo run lint
 bun run check-types  # turbo run check-types
-bun run test         # turbo run test
+bunx turbo run test  # vitest suite (apps/fe)
 ```
 
 ## Production deployment
