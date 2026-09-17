@@ -37,7 +37,6 @@ yarn-error.log*
 .DS_Store
 *.pem
 
-apps/fe/public/
 README.md
 
 .repomixignore
