@@ -108,7 +108,7 @@ const createPhase = (key: PhaseKey): Phase => ({
 });
 
 interface BuilderContentProps {
-  getToken: (() => Promise<string | null>) | null;
+  getToken: ((opts?: { skipCache?: boolean }) => Promise<string | null>) | null;
 }
 
 const BuilderContent = ({ getToken }: BuilderContentProps) => {
@@ -132,7 +132,10 @@ const BuilderContent = ({ getToken }: BuilderContentProps) => {
 
   const { instance, serverUrl, status, events, mountFiles, startDevServer, writeFile, reset } = useWebContainer();
   const [attempt, setAttempt] = useState(0);
+  const [templateReady, setTemplateReady] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const templateDataRef = useRef<{ steps: Step[]; files: ParsedFile[]; userPrompt: string; templateLength: number; prompts: string[] } | null>(null);
+  const activePhaseRef = useRef<PhaseKey>('templating');
   const writtenFileContents = useRef(new Map<string, string>());
   const ledgeredFiles = useRef(new Set<string>());
   const processedEvents = useRef(0);
@@ -160,15 +163,38 @@ const BuilderContent = ({ getToken }: BuilderContentProps) => {
     setPhases((prev) => prev.map((p) => (p.key === key ? { ...p, ...patch } : p)));
   }, []);
 
-  const getAuthToken = async (): Promise<string | null> => {
+  const getAuthToken = useCallback(async (opts?: { skipCache?: boolean }): Promise<string | null> => {
     if (!getTokenRef.current) return null;
     try {
-      return await getTokenRef.current();
+      return await getTokenRef.current(opts);
     } catch (err) {
       console.error('Failed to get auth token:', err);
       return null;
     }
-  };
+  }, []);
+
+  const postChat = useCallback(async (body: object, signal: AbortSignal): Promise<Response> => {
+    const send = async (token: string | null) =>
+      fetch(`${BACKEND_URL}/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(body),
+        signal,
+      });
+
+    let token = await getAuthToken();
+    let response = await send(token);
+
+    if (response.status === 401) {
+      token = await getAuthToken({ skipCache: true });
+      response = await send(token);
+    }
+
+    return response;
+  }, [getAuthToken]);
 
   const applyParsedChunk = useCallback(async (result: ParseResult, signal: AbortSignal, alive: () => boolean) => {
     const {
@@ -290,248 +316,315 @@ const BuilderContent = ({ getToken }: BuilderContentProps) => {
   }, [status, serverUrl, updatePhase]);
 
   useEffect(() => {
-    if(!instance){
+    const abort = new AbortController();
+    let mounted = true;
+
+    setTemplateReady(false);
+    templateDataRef.current = null;
+    activePhaseRef.current = 'templating';
+    setSteps([]);
+    setFiles([]);
+    setFileTree([]);
+    setFileContents(new Map());
+    setSelectedFile(null);
+
+    if (savedProject?.files?.length) {
+      const loadedFiles: ParsedFile[] = savedProject.files
+        .filter((f) => f.filePath && f.content !== undefined)
+        .map((f) => ({ type: 'file', filePath: f.filePath, content: f.content }));
+
+      const loadedSteps: Step[] = loadedFiles.map((f, index) => ({
+        id: index,
+        title: `Load ${f.filePath}`,
+        description: `Loading file ${f.filePath}`,
+        status: 'completed',
+        type: 'file',
+        filePath: f.filePath,
+        content: f.content,
+      }));
+
+      templateDataRef.current = {
+        steps: loadedSteps,
+        files: loadedFiles,
+        userPrompt: prompt,
+        templateLength: 0,
+        prompts: [],
+      };
+
+      setSteps(loadedSteps);
+      setFiles(loadedFiles);
+      setFileTree(buildFileTree(loadedFiles.map((f) => ({ filePath: f.filePath, content: f.content }))));
+
+      const contentMap = new Map<string, string>();
+      loadedFiles.forEach((f) => contentMap.set(f.filePath, f.content));
+      setFileContents(contentMap);
+
+      if (loadedFiles.length > 0) setSelectedFile(loadedFiles[0].filePath);
+      setProjectId(savedProject.id);
+
+      updatePhase('templating', {
+        status: 'done',
+        current: null,
+        summary: `${loadedFiles.length} files loaded`,
+        ledger: loadedFiles.map((f) => f.filePath),
+      });
+
+      setTemplateReady(true);
       return;
     }
+
+    setIsLoading(true);
+    updatePhase('templating', { status: 'running', current: "Processing the prompt...", error: null });
+
+    const classifyTemplate = async () => {
+      const token = await getAuthToken();
+      if (!token) {
+        if (!mounted) return;
+        const message = 'Sign in to generate your app.';
+        setError(message);
+        setIsLoading(false);
+        updatePhase('templating', { status: 'error', current: null, error: message });
+        return;
+      }
+
+      if (!mounted || abort.signal.aborted) return;
+
+      updatePhase('templating', { status: 'running', current: "Receiving template files...", error: null });
+
+      const templateResponse = await axios.post(`${BACKEND_URL}/template`, {
+        prompt
+      }, {
+        signal: abort.signal,
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      const { userPrompt, templateLength, prompts } = templateResponse.data;
+
+      if(!prompts || prompts.length === 0){
+        throw new Error('No templates received from server')
+      }
+
+      if (!mounted || abort.signal.aborted) return;
+
+      updatePhase('templating', { status: 'running', current: "Setting up project skeleton...", error: null });
+
+      const parser = new StreamParser();
+      let parsedSteps: Step[] = [];
+      let parsedFiles: ParsedFile[] = [];
+
+      for(const templatePrompt of prompts){
+        const parsedResult = parser.parseChunk(templatePrompt);
+        parsedSteps = parsedResult.steps;
+        parsedFiles = parsedResult.files;
+      }
+
+      templateDataRef.current = {
+        steps: parsedSteps,
+        files: parsedFiles,
+        userPrompt,
+        templateLength,
+        prompts,
+      };
+
+      updatePhase('templating', {
+        status: 'done',
+        current: null,
+        summary: `${parsedFiles.length} files created`,
+        ledger: parsedFiles.map((f) => f.filePath)
+      });
+
+      if (!mounted || abort.signal.aborted) return;
+
+      setSteps(parsedSteps);
+      setFiles(parsedFiles);
+
+      const tree = buildFileTree(parsedFiles.map((f) => ({
+        filePath: f.filePath,
+        content: f.content
+      })));
+
+      setFileTree(tree);
+
+      const contentMap = new Map<string, string>();
+      parsedFiles.forEach((f) => {
+        contentMap.set(f.filePath, f.content);
+      });
+
+      setFileContents(contentMap);
+
+      if (parsedFiles.length > 0) {
+          setSelectedFile(parsedFiles[0].filePath);
+      }
+
+      setTemplateReady(true);
+    };
+
+    classifyTemplate().catch((error) => {
+      if (abort.signal.aborted || !mounted) return;
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.log(`Failed to classify template for prompt: ${prompt}, got the following error\n${error}`);
+      setError(message);
+      setIsLoading(false);
+      setPhases((prev) =>
+        prev.map((p) =>
+          p.key === activePhaseRef.current
+            ? { ...p, status: 'error', current: null, error: message }
+            : p
+        )
+      );
+    });
+
+    return () => {
+      mounted = false;
+      abort.abort();
+    };
+  }, [prompt, savedProject, attempt, updatePhase, getAuthToken]);
+
+  useEffect(() => {
+    if (!instance || !templateReady) return;
 
     const abort = new AbortController();
     abortRef.current = abort;
     let mounted = true;
+    activePhaseRef.current = 'building';
 
-    const init = async () => {
+    const buildProject = async () => {
+      setIsLoading(true);
+
+      const data = templateDataRef.current;
+      if (!data) {
+        setIsLoading(false);
+        return;
+      }
+
+      if (data.prompts.length === 0) {
+        const filesToMount = data.files.map((f) => ({ filePath: f.filePath, content: f.content }));
+        await mountFiles(filesToMount);
+        if (!mounted || abort.signal.aborted) return;
+        filesToMount.forEach((f) => writtenFileContents.current.set(f.filePath, f.content));
+
+        updatePhase('building', { status: 'done', current: null, summary: 'Loaded from library', ledger: [] });
+
+        await startDevServer();
+        if (!mounted || abort.signal.aborted) return;
+        setIsLoading(false);
+        return;
+      }
+
+      const filesToMount = data.files.filter(f => f.type === 'file' && f.filePath && f.content !== undefined)
+                          .map(f => ({ filePath: f.filePath, content: f.content }));
+
+      await mountFiles(filesToMount);
+      if (!mounted || abort.signal.aborted) return;
+
+      filesToMount.forEach(f => writtenFileContents.current.set(f.filePath, f.content));
+
+      await startDevServer();
+      if (!mounted || abort.signal.aborted) return;
+
+      updatePhase('building', { status: 'running', current: 'Streaming app code...', error: null });
+
+      const { userPrompt, templateLength, prompts } = data;
+
+      const codeResponse = await postChat({ userPrompt, templateLength, prompts }, abort.signal);
+
+      if(!codeResponse.ok){
+        throw new Error('Failed to fetch chat response');
+      }
+
+      const reader = codeResponse.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if(!reader) {
+        throw new Error('No reader available');
+      }
+
       const parser = new StreamParser();
-        try {
-          setIsLoading(true);
+      let streamFinished = false;
+      let artifactClosed = false;
+      let hasArtifact = false;
+      let streamErrorCarry = '';
 
-          if (savedProject?.files?.length) {
-            const loadedFiles: ParsedFile[] = savedProject.files
-              .filter((f) => f.filePath && f.content !== undefined)
-              .map((f) => ({ type: 'file', filePath: f.filePath, content: f.content }));
+      while(!streamFinished){
+        if (abort.signal.aborted || !mounted) break;
 
-            const loadedSteps: Step[] = loadedFiles.map((f, index) => ({
-              id: index,
-              title: `Load ${f.filePath}`,
-              description: `Loading file ${f.filePath}`,
-              status: 'completed',
-              type: 'file',
-              filePath: f.filePath,
-              content: f.content,
-            }));
+        const {done, value} = await reader.read();
 
-            setSteps(loadedSteps);
-            setFiles(loadedFiles);
-            setFileTree(buildFileTree(loadedFiles.map((f) => ({ filePath: f.filePath, content: f.content }))));
+        if(done) {
+          streamFinished = true;
+          break;
+        }
 
-            const contentMap = new Map<string, string>();
-            loadedFiles.forEach((f) => contentMap.set(f.filePath, f.content));
-            setFileContents(contentMap);
+        const chunk = decoder.decode(value, { stream: true });
 
-            if (loadedFiles.length > 0) setSelectedFile(loadedFiles[0].filePath);
-            setProjectId(savedProject.id);
+        const marker = hasStreamErrorMarker(chunk, streamErrorCarry);
+        streamErrorCarry = marker.carry;
+        if (marker.detected) {
+          throw new Error('Response interrupted on the server');
+        }
 
-            updatePhase('templating', {
-              status: 'done',
-              current: null,
-              summary: `${loadedFiles.length} files loaded`,
-              ledger: loadedFiles.map((f) => f.filePath),
-            });
+        const parsed = parser.parseChunk(chunk);
 
-            const filesToMount = loadedFiles.map((f) => ({ filePath: f.filePath, content: f.content }));
-            await mountFiles(filesToMount);
-            if (!mounted || abort.signal.aborted) return;
-            filesToMount.forEach((f) => writtenFileContents.current.set(f.filePath, f.content));
+        if (parsed.isComplete) artifactClosed = true;
+        if (parsed.hasArtifact) hasArtifact = true;
 
-            updatePhase('building', { status: 'done', current: null, summary: 'Loaded from library', ledger: [] });
+        if (!mounted || abort.signal.aborted) break;
 
-            await startDevServer();
-            setIsLoading(false);
-            return;
-          }
+        await applyParsedChunk(parsed, abort.signal, () => mounted);
 
-          updatePhase('templating', { status: 'running', current: "Setting up project's template", error: null });
+        if(!mounted || abort.signal.aborted) break;
+      }
 
-          const token = await getAuthToken();
-          if (!token) {
-            const message = 'Sign in to generate your app.';
-            setError(message);
-            setIsLoading(false);
-            updatePhase('templating', { status: 'error', current: null, error: message });
-            return;
-          }
-
-          // Template processing
-
-          const templateResponse = await axios.post(`${BACKEND_URL}/template`, {
-            prompt
-          }, {
-            signal: abort.signal,
-            headers: { Authorization: `Bearer ${token}` }
-          });
-
-          const { classification, userPrompt, templateLength, prompts } = templateResponse.data;
-
-          if(!prompts || prompts.length === 0){
-            throw new Error('No templates received from server')
-          }
-
-          let parsedSteps: Step[] = [];
-          let parsedFiles: ParsedFile[] = [];
-
-          for(const templatePrompt of prompts){
-            const parsedResult = parser.parseChunk(templatePrompt);
-            parsedSteps = parsedResult.steps;
-            parsedFiles = parsedResult.files;
-          }
-
-          if (!mounted || abort.signal.aborted) return;
-
-          updatePhase('templating', {
+      if (!abort.signal.aborted && mounted && streamFinished) {
+        setIsLoading(false);
+        if (artifactClosed) {
+          updatePhase('building', {
             status: 'done',
             current: null,
-            summary: `${parsedFiles.length} files created`,
-            ledger: parsedFiles.map((f) => f.filePath)
+            summary: `${ledgeredFiles.current.size} files updated`
           });
-
-          setSteps(parsedSteps);
-          setFiles(parsedFiles);
-
-          const tree = buildFileTree(parsedFiles.map((f) => ({
-            filePath: f.filePath,
-            content: f.content
-          })));
-
-          setFileTree(tree);
-
-          const contentMap = new Map<string, string>();
-          parsedFiles.forEach((f) => {
-            contentMap.set(f.filePath, f.content);
-          });
-
-          setFileContents(contentMap);
-
-          if (parsedFiles.length > 0) {
-              setSelectedFile(parsedFiles[0].filePath);
-          }
-
-          // Mounting + devServer start
-          const filesToMount = parsedFiles.filter(f => f.type === 'file' && f.filePath && f.content !== undefined)
-                              .map(f => ({ filePath: f.filePath, content: f.content }));
-
-          await mountFiles(filesToMount);
-          if (!mounted || abort.signal.aborted) return;
-
-          filesToMount.forEach(f => writtenFileContents.current.set(f.filePath, f.content));
-
-          await startDevServer();
-
-          parser.resetForNextArtifact();
-
-          // Response streaming
-
-          const codeResponse = await fetch(`${BACKEND_URL}/chat`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            body: JSON.stringify({
-              userPrompt,
-              templateLength,
-              prompts
-            }),
-            signal: abort.signal
-          });
-
-          if(!codeResponse.ok){
-            throw new Error('Failed to fetch chat response');
-          }
-
-          const reader = codeResponse.body?.getReader();
-          const decoder = new TextDecoder();
-
-          if(!reader) {
-            throw new Error('No reader available');
-          }
-
-          let streamFinished = false;
-          let artifactClosed = false;
-          let hasArtifact = false;
-          let streamErrorCarry = '';
-
-          while(!streamFinished){
-            if (abort.signal.aborted || !mounted) break;
-
-            const {done, value} = await reader.read();
-
-            if(done) {
-              streamFinished = true;
-              break;
-            }
-
-            const chunk = decoder.decode(value, { stream: true });
-
-            const marker = hasStreamErrorMarker(chunk, streamErrorCarry);
-            streamErrorCarry = marker.carry;
-            if (marker.detected) {
-              throw new Error('Response interrupted on the server');
-            }
-
-            const parsed = parser.parseChunk(chunk);
-
-            if (parsed.isComplete) artifactClosed = true;
-            if (parsed.hasArtifact) hasArtifact = true;
-
-            if (!mounted || abort.signal.aborted) break;
-
-            await applyParsedChunk(parsed, abort.signal, () => mounted);
-
-            if(!mounted || abort.signal.aborted) break;
-          }
-
-          if (!abort.signal.aborted && mounted && streamFinished) {
-            setIsLoading(false);
-            if (artifactClosed) {
-              updatePhase('building', {
-                status: 'done',
-                current: null,
-                summary: `${ledgeredFiles.current.size} files updated`
-              });
-            } else if (hasArtifact) {
-              const message = 'The AI response ended before the app was fully generated. The last file may be incomplete — send a follow-up like "continue where you left off".';
-              setError(message);
-              updatePhase('building', { status: 'error', current: null, error: message });
-            } else {
-              const message = 'The AI response did not include any project files. Please try again.';
-              setError(message);
-              updatePhase('building', { status: 'error', current: null, error: message });
-            }
-          }
-        } catch (error) {
-            if (abort.signal.aborted || !mounted) return;
-            const message = error instanceof Error ? error.message : 'Unknown error';
-            console.log(`Failed to fetch template for prompt: ${prompt}, got the following error\n${error}`);
-            setError(message);
-            setIsLoading(false);
-            setPhases((prev) =>
-              prev.map((p) => (p.status === 'done' ? p : { ...p, status: 'error', error: message }))
-            );
+        } else if (hasArtifact) {
+          const message = 'The AI response ended before the app was fully generated. The last file may be incomplete — send a follow-up like "continue where you left off".';
+          setError(message);
+          updatePhase('building', { status: 'error', current: null, error: message });
+        } else {
+          const message = 'The AI response did not include any project files. Please try again.';
+          setError(message);
+          updatePhase('building', { status: 'error', current: null, error: message });
         }
+      }
     };
 
-    init();
+    buildProject().catch((error) => {
+      if (abort.signal.aborted || !mounted) return;
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.log(`Failed to build project for prompt: ${prompt}, got the following error\n${error}`);
+      setError(message);
+      setIsLoading(false);
+      setPhases((prev) =>
+        prev.map((p) =>
+          p.key === activePhaseRef.current
+            ? { ...p, status: 'error', current: null, error: message }
+            : p
+        )
+      );
+    });
 
     return () => {
       mounted = false;
       abort.abort();
       abortRef.current = null;
     };
-  }, [prompt, savedProject, instance, mountFiles, startDevServer, writeFile, attempt, applyParsedChunk, updatePhase]);
+  }, [prompt, instance, templateReady, mountFiles, startDevServer, attempt, applyParsedChunk, updatePhase, postChat]);
 
   const selectedFileContent = selectedFile ? fileContents.get(selectedFile) : null;
 
   const handleRetry = async () => {
     setError(null);
     setIsLoading(true);
+    setTemplateReady(false);
+    templateDataRef.current = null;
+    activePhaseRef.current = 'templating';
     setSteps([]);
     setFiles([]);
     setFileTree([]);
@@ -582,25 +675,13 @@ const BuilderContent = ({ getToken }: BuilderContentProps) => {
       );
 
       updatePhase('building', { status: 'running', current: 'Applying changes...', error: null });
+      activePhaseRef.current = 'building';
 
-      const token = await getAuthToken();
-      if (!token) {
-        throw new Error('Sign in to continue generating your app.');
-      }
-
-      const response = await fetch(`${BACKEND_URL}/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          userPrompt: text,
-          context: projectContext,
-          userChanges
-        }),
-        signal: abort.signal
-      });
+      const response = await postChat({
+        userPrompt: text,
+        context: projectContext,
+        userChanges
+      }, abort.signal);
 
       if (!response.ok) {
         throw new Error('Failed to fetch follow-up response');
@@ -667,6 +748,13 @@ const BuilderContent = ({ getToken }: BuilderContentProps) => {
         next[next.length - 1] = { role: 'assistant', content: `${assistantText}\n\n[Error: ${message}]` };
         return next;
       });
+      setPhases((prev) =>
+        prev.map((p) =>
+          p.key === activePhaseRef.current
+            ? { ...p, status: 'error', current: null, error: message }
+            : p
+        )
+      );
     } finally {
       if (!abort.signal.aborted && streamFinished) {
         if (artifactClosed) {
